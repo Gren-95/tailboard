@@ -3,7 +3,7 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
-const { randomUUID, timingSafeEqual } = require('crypto');
+const { randomUUID, timingSafeEqual, randomBytes } = require('crypto');
 const http  = require('node:http');
 const https = require('node:https');
 
@@ -15,7 +15,7 @@ const ICONS_DIR  = process.env.ICONS_DIR  || '/data/icons';
 const FAVICON_FILE = '/data/favicon';
 const FAVICON_MIME = '/data/favicon.mime';
 
-// ─── Basic auth (optional) ────────────────────────────────────────────────────
+// ─── Auth (optional, session-cookie based) ────────────────────────────────────
 
 const AUTH_USER = (process.env.AUTH_USER || '').trim();
 const AUTH_PASS = (process.env.AUTH_PASS || '').trim();
@@ -25,21 +25,114 @@ function safeEq(a, b) {
   return ab.length === bb.length && timingSafeEqual(ab, bb);
 }
 
+const SESSION_COOKIE  = 'tbsession';
+const SESSION_MAX_AGE = 7 * 24 * 60 * 60; // seconds — 7 days
+
+/** token → expiry epoch ms */
+const sessions = new Map();
+
+// Prune expired sessions hourly
+setInterval(() => {
+  const now = Date.now();
+  for (const [tok, exp] of sessions) { if (exp < now) sessions.delete(tok); }
+}, 3_600_000);
+
+function getCookie(req, name) {
+  for (const chunk of (req.headers.cookie || '').split(';')) {
+    const eq = chunk.indexOf('=');
+    if (eq === -1) continue;
+    if (chunk.slice(0, eq).trim() === name) return chunk.slice(eq + 1).trim();
+  }
+  return null;
+}
+
+function isAuthenticated(req) {
+  if (!AUTH_USER || !AUTH_PASS) return true;
+  const tok = getCookie(req, SESSION_COOKIE);
+  const exp = tok && sessions.get(tok);
+  return !!(exp && exp > Date.now());
+}
+
+function loginHtml(errorMsg) {
+  const errBlock = errorMsg
+    ? `<div style="background:#450a0a;border:1px solid #7f1d1d;color:#fca5a5;border-radius:.5rem;padding:.625rem .75rem;font-size:.875rem;margin-bottom:1rem">${errorMsg}</div>`
+    : '';
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Sign in — Tailboard</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0c0a09;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1rem}
+    .card{background:#1c1917;border:1px solid #292524;border-radius:1rem;padding:2rem;width:100%;max-width:360px;box-shadow:0 25px 50px -12px rgba(0,0,0,.6)}
+    h1{color:#f5f5f4;font-size:1.25rem;font-weight:700;text-align:center;margin-bottom:.25rem}
+    .sub{color:#78716c;font-size:.875rem;text-align:center;margin-bottom:1.75rem}
+    label{display:block;font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#a8a29e;margin-bottom:.4rem}
+    input{display:block;width:100%;padding:.625rem .75rem;background:#292524;border:1px solid #44403c;border-radius:.5rem;color:#f5f5f4;font-size:.9rem;outline:none;transition:border-color .15s;margin-bottom:1.1rem}
+    input:focus{border-color:#6366f1;box-shadow:0 0 0 2px rgba(99,102,241,.2)}
+    button{width:100%;padding:.7rem;background:#6366f1;color:#fff;font-size:.9rem;font-weight:600;border:none;border-radius:.5rem;cursor:pointer;transition:background .15s;letter-spacing:.01em}
+    button:hover{background:#4f46e5}
+    button:active{background:#4338ca}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Tailboard</h1>
+    <p class="sub">Sign in to continue</p>
+    ${errBlock}
+    <form method="POST" action="/login" autocomplete="on">
+      <label for="u">Username</label>
+      <input id="u" name="username" type="text" autocomplete="username" autofocus required>
+      <label for="p">Password</label>
+      <input id="p" name="password" type="password" autocomplete="current-password" required>
+      <button type="submit">Sign in</button>
+    </form>
+  </div>
+</body>
+</html>`;
+}
+
+// Login / logout routes registered BEFORE auth middleware so they're always reachable
+app.get('/login', (req, res) => {
+  if (!AUTH_USER || !AUTH_PASS) return res.redirect('/');
+  if (isAuthenticated(req)) return res.redirect('/');
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(loginHtml(''));
+});
+
+app.post('/login', express.urlencoded({ extended: false }), (req, res) => {
+  const u = String(req.body.username || '');
+  const p = String(req.body.password || '');
+  if (safeEq(u, AUTH_USER) && safeEq(p, AUTH_PASS)) {
+    const token = randomBytes(32).toString('hex');
+    sessions.set(token, Date.now() + SESSION_MAX_AGE * 1000);
+    res.setHeader('Set-Cookie',
+      `${SESSION_COOKIE}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_MAX_AGE}`);
+    return res.redirect('/');
+  }
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(loginHtml('Invalid username or password.'));
+});
+
+app.get('/logout', (req, res) => {
+  if (!AUTH_USER || !AUTH_PASS) return res.redirect('/');
+  const tok = getCookie(req, SESSION_COOKIE);
+  if (tok) sessions.delete(tok);
+  res.setHeader('Set-Cookie',
+    `${SESSION_COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0`);
+  res.redirect('/login');
+});
+
+// ─── Auth middleware ───────────────────────────────────────────────────────────
+
 if (AUTH_USER && AUTH_PASS) {
   app.use((req, res, next) => {
-    if (req.path === '/health') return next(); // keep healthcheck working
-    const hdr = req.headers['authorization'] || '';
-    if (hdr.startsWith('Basic ')) {
-      const decoded  = Buffer.from(hdr.slice(6), 'base64').toString('utf8');
-      const colonIdx = decoded.indexOf(':');
-      if (colonIdx !== -1) {
-        const u = decoded.slice(0, colonIdx);
-        const p = decoded.slice(colonIdx + 1);
-        if (safeEq(u, AUTH_USER) && safeEq(p, AUTH_PASS)) return next();
-      }
-    }
-    res.setHeader('WWW-Authenticate', 'Basic realm="Tailboard", charset="UTF-8"');
-    res.status(401).send('Unauthorized');
+    if (req.path === '/health') return next();
+    if (isAuthenticated(req)) return next();
+    if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'unauthorized' });
+    res.redirect('/login');
   });
 }
 
@@ -139,6 +232,10 @@ app.get('/health', (req, res) => res.json({ ok: true }));
 
 app.get('/api/status', (req, res) => {
   res.json(Object.fromEntries(statusCache));
+});
+
+app.get('/api/auth', (req, res) => {
+  res.json({ enabled: !!(AUTH_USER && AUTH_PASS) });
 });
 
 // ─── Config ───────────────────────────────────────────────────────────────────
