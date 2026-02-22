@@ -2426,7 +2426,7 @@ function renderNoteCard(note) {
 
   // Body
   const body = document.createElement('div');
-  body.className = `px-4 py-3 text-sm ${b.text} max-h-48 overflow-y-auto`;
+  body.className = `px-4 py-3 text-sm ${b.text} max-h-48 overflow-y-auto overflow-x-hidden break-words`;
   body.innerHTML = renderMd(note.content || '');
   card.appendChild(body);
   return card;
