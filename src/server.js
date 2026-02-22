@@ -149,6 +149,7 @@ const DEFAULT_CONFIG = {
   pingInterval: 60,
   viewMode: 'grid',
   showClock: false,
+  weather: { apiKey: '', city: '', units: 'metric' },
   groups: [],
 };
 
@@ -178,6 +179,11 @@ function findGroup(cfg, groupId) {
 
 /** linkId → 'up' | 'down' (in-memory only, resets on restart) */
 const statusCache = new Map();
+
+// Weather proxy cache
+let weatherCache     = null;
+let weatherCacheTime = 0;
+const WEATHER_TTL    = 10 * 60 * 1000; // 10 minutes
 
 /**
  * Ping a URL via HEAD using node:http/https directly so we can set
@@ -258,13 +264,21 @@ app.get('/api/config', (req, res) => {
 
 app.put('/api/config', (req, res) => {
   const cfg = loadConfig();
-  const { title, basePalette, darkMode, pingInterval, viewMode, showClock } = req.body;
+  const { title, basePalette, darkMode, pingInterval, viewMode, showClock, weather } = req.body;
   if (title        !== undefined) cfg.title        = String(title).trim().slice(0, 100);
   if (basePalette  !== undefined) cfg.basePalette  = String(basePalette);
   if (darkMode     !== undefined) cfg.darkMode     = Boolean(darkMode);
   if (pingInterval !== undefined) cfg.pingInterval = Math.max(0, Number(pingInterval) || 0);
   if (viewMode     !== undefined) cfg.viewMode     = ['grid', 'list'].includes(viewMode) ? viewMode : 'grid';
   if (showClock    !== undefined) cfg.showClock    = Boolean(showClock);
+  if (weather !== undefined && weather !== null && typeof weather === 'object') {
+    cfg.weather = {
+      apiKey: String(weather.apiKey || '').trim().slice(0, 300),
+      city:   String(weather.city   || '').trim().slice(0, 100),
+      units:  ['metric', 'imperial'].includes(weather.units) ? weather.units : 'metric',
+    };
+    weatherCache = null; // invalidate on config change
+  }
   saveConfig(cfg);
   res.json(cfg);
 });
@@ -290,6 +304,11 @@ app.post('/api/config/import', (req, res) => {
     pingInterval: typeof body.pingInterval === 'number'  ? body.pingInterval : current.pingInterval,
     viewMode:     typeof body.viewMode     === 'string'  ? body.viewMode     : current.viewMode,
     showClock:    typeof body.showClock    === 'boolean' ? body.showClock    : current.showClock,
+    weather: (body.weather && typeof body.weather === 'object') ? {
+      apiKey: String(body.weather.apiKey || '').trim().slice(0, 300),
+      city:   String(body.weather.city   || '').trim().slice(0, 100),
+      units:  ['metric', 'imperial'].includes(body.weather.units) ? body.weather.units : 'metric',
+    } : current.weather,
     groups:       body.groups,
   };
   saveConfig(merged);
@@ -505,6 +524,38 @@ app.post('/api/links/move', (req, res) => {
 
   saveConfig(cfg);
   res.json(link);
+});
+
+// ─── Weather proxy ────────────────────────────────────────────────────────────
+
+app.get('/api/weather', async (req, res) => {
+  const cfg = loadConfig();
+  const { apiKey, city, units } = cfg.weather || {};
+  if (!apiKey || !city) return res.status(204).send('');
+
+  if (weatherCache && Date.now() - weatherCacheTime < WEATHER_TTL)
+    return res.json(weatherCache);
+
+  try {
+    const url = `https://api.openweathermap.org/data/2.5/weather`
+              + `?q=${encodeURIComponent(city)}&appid=${apiKey}&units=${units || 'metric'}`;
+    const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!resp.ok) throw new Error(`OpenWeather ${resp.status}`);
+    const d = await resp.json();
+    weatherCache = {
+      temp:        Math.round(d.main.temp),
+      feels:       Math.round(d.main.feels_like),
+      humidity:    d.main.humidity,
+      description: d.weather[0].description,
+      icon:        d.weather[0].icon,
+      city:        d.name,
+      units:       units || 'metric',
+    };
+    weatherCacheTime = Date.now();
+    res.json(weatherCache);
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
 });
 
 // ─── SPA fallback ─────────────────────────────────────────────────────────────

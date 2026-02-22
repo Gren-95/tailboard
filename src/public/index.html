@@ -101,6 +101,12 @@ const ICON_BG_OPTIONS = [
 const ICON_BG_MAP = Object.fromEntries(
   ICON_BG_OPTIONS.filter(o => o.hex).map(o => [o.key, o.hex])
 );
+
+// WIDGET — literal class strings used by the clock/weather card (Tailwind scanner)
+const WIDGET = {
+  time: 'text-4xl font-bold tabular-nums leading-none',
+  date: 'text-sm mt-1',
+};
 </script>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
@@ -115,8 +121,6 @@ const ICON_BG_MAP = Object.fromEntries(
     </button>
     <h1 id="dashTitle" class="text-xl font-semibold tracking-tight cursor-pointer select-none" title="Click to rename"></h1>
   </div>
-  <div class="flex items-center gap-3">
-  <span id="clock" class="hidden text-sm font-mono opacity-70 tabular-nums select-none"></span>
   <div class="relative">
     <button id="menuBtn" title="Menu"
       class="rounded-lg p-2 opacity-70 hover:opacity-100 transition-opacity">
@@ -154,7 +158,6 @@ const ICON_BG_MAP = Object.fromEntries(
         Sign out
       </a>
     </div>
-  </div>
   </div>
 </header>
 
@@ -313,8 +316,6 @@ function applyBase(palette) {
   const ct = document.getElementById('menuClockToggle');
   if (ct) ct.textContent = state.config && state.config.showClock ? '🕐 Hide clock' : '🕐 Show clock';
 
-  const clockEl = document.getElementById('clock');
-  if (clockEl) clockEl.classList.toggle('hidden', !(state.config && state.config.showClock));
 }
 
 // ─── Render ──────────────────────────────────────────────────────────────────
@@ -334,6 +335,10 @@ function render() {
   container.style.gridTemplateColumns = isList
     ? '1fr'
     : 'repeat(auto-fill, minmax(280px, 1fr))';
+
+  if (cfg.showClock) {
+    container.appendChild(renderClockCard());
+  }
 
   cfg.groups.forEach((group) => {
     const acc = ACCENT[group.accent] || ACCENT.slate;
@@ -622,6 +627,163 @@ function render() {
   }
 
   renderPinned();
+
+  if (cfg.showClock) {
+    requestAnimationFrame(updateClock);
+    fetchWeather();
+  }
+}
+
+// ─── Clock card ───────────────────────────────────────────────────────────────
+
+function renderClockCard() {
+  const cfg = state.config;
+  const t   = TOPBAR[cfg.basePalette] || TOPBAR.stone;
+  const card = document.createElement('div');
+  card.className = `group-section rounded-xl overflow-hidden border shadow-md ${FIXED.card}`;
+
+  // Header
+  const hdr = document.createElement('div');
+  hdr.className = `flex items-center justify-between px-4 py-2.5 ${t.bar} ${t.text}`;
+  const hTitle = document.createElement('span');
+  hTitle.className = 'font-semibold text-sm tracking-wide';
+  hTitle.textContent = 'Clock';
+  hdr.appendChild(hTitle);
+  hdr.appendChild(mkBtn('⚙', 'Weather settings', 'opacity-70 hover:opacity-100 text-base px-1 transition-opacity', () => openWeatherModal()));
+  card.appendChild(hdr);
+
+  // Body
+  const body = document.createElement('div');
+  body.className = 'px-4 py-5 text-center';
+  const timeEl = document.createElement('div');
+  timeEl.id = 'clockCardTime';
+  timeEl.className = `${WIDGET.time} ${FIXED.text}`;
+  body.appendChild(timeEl);
+  const dateEl = document.createElement('div');
+  dateEl.id = 'clockCardDate';
+  dateEl.className = `${WIDGET.date} ${FIXED.sub}`;
+  body.appendChild(dateEl);
+  const wxEl = document.createElement('div');
+  wxEl.id = 'clockCardWeather';
+  wxEl.className = 'mt-3';
+  body.appendChild(wxEl);
+  card.appendChild(body);
+  return card;
+}
+
+// ─── Weather ──────────────────────────────────────────────────────────────────
+
+async function fetchWeather() {
+  try {
+    const res = await fetch('/api/weather');
+    if (res.status === 204) { renderWeatherCard(null); return; }
+    if (!res.ok) throw new Error(res.status);
+    renderWeatherCard(await res.json());
+  } catch { renderWeatherCard(null); }
+}
+
+function renderWeatherCard(data) {
+  const el = document.getElementById('clockCardWeather');
+  if (!el) return;
+  if (!data) { el.innerHTML = ''; return; }
+  const unit = data.units === 'imperial' ? '°F' : '°C';
+  el.innerHTML = `
+    <div class="flex items-center justify-center gap-2 mt-2">
+      <img src="https://openweathermap.org/img/wn/${data.icon}@2x.png"
+           class="w-10 h-10 flex-shrink-0" alt="" onerror="this.remove()">
+      <div>
+        <div class="text-2xl font-semibold ${FIXED.text}">${data.temp}${unit}</div>
+        <div class="text-xs capitalize ${FIXED.sub}">${data.description}</div>
+      </div>
+    </div>
+    <div class="text-xs mt-1 ${FIXED.sub}">
+      ${data.city} &middot; feels ${data.feels}${unit} &middot; ${data.humidity}% humidity
+    </div>`;
+}
+
+function openWeatherModal() {
+  const cfg = state.config;
+  const wx  = cfg.weather || {};
+  const b   = FIXED;
+  const wrap = document.createElement('div');
+
+  const title = document.createElement('h2');
+  title.className = `text-lg font-semibold mb-4 ${b.text}`;
+  title.textContent = 'Weather settings';
+  wrap.appendChild(title);
+
+  wrap.appendChild(mkLabel('OpenWeather API key', b.sub));
+  const apiInput = document.createElement('input');
+  apiInput.type = 'password';
+  apiInput.value = wx.apiKey || '';
+  apiInput.placeholder = 'Paste your API key…';
+  apiInput.className = `w-full px-3 py-2 rounded-lg text-sm border ${b.card} ${b.text} focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all`;
+  wrap.appendChild(apiInput);
+
+  const hint = document.createElement('p');
+  hint.className = `text-xs mt-1 mb-3 ${b.sub}`;
+  hint.innerHTML = 'Free key at <a href="https://home.openweathermap.org/users/sign_up" target="_blank" rel="noopener" class="underline">openweathermap.org</a>. Key stays on the server.';
+  wrap.appendChild(hint);
+
+  const cityLabel = mkLabel('City', b.sub);
+  cityLabel.className += ' mt-2 block';
+  wrap.appendChild(cityLabel);
+  const cityInput = mkInput(wx.city || '', 'e.g. London, New York, Tokyo', b);
+  wrap.appendChild(cityInput);
+
+  const unitsLabel = mkLabel('Units', b.sub);
+  unitsLabel.className += ' mt-4 block';
+  wrap.appendChild(unitsLabel);
+
+  let selectedUnits = wx.units === 'imperial' ? 'imperial' : 'metric';
+  const piBase   = 'px-4 py-1.5 rounded-lg text-sm border transition-colors';
+  const piActive = 'bg-indigo-600 text-white border-indigo-600';
+  const piIdle   = `border-stone-300 dark:border-stone-600 ${b.text} hover:bg-stone-100 dark:hover:bg-stone-700`;
+  const unitsRow = document.createElement('div');
+  unitsRow.className = 'flex gap-2 mt-1';
+  [{ v: 'metric', l: 'Metric °C' }, { v: 'imperial', l: 'Imperial °F' }].forEach(({ v, l }) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = l;
+    btn.dataset.units = v;
+    btn.className = `${piBase} ${v === selectedUnits ? piActive : piIdle}`;
+    btn.addEventListener('click', () => {
+      selectedUnits = v;
+      unitsRow.querySelectorAll('button').forEach(b2 => {
+        b2.className = `${piBase} ${b2.dataset.units === selectedUnits ? piActive : piIdle}`;
+      });
+    });
+    unitsRow.appendChild(btn);
+  });
+  wrap.appendChild(unitsRow);
+
+  const footer = document.createElement('div');
+  footer.className = 'flex justify-end gap-2 mt-6';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.className = `px-4 py-2 rounded-lg text-sm font-medium border ${b.text} opacity-60 hover:opacity-100 transition-opacity`;
+  cancelBtn.onclick = closeModal;
+  footer.appendChild(cancelBtn);
+
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.textContent = 'Save';
+  saveBtn.className = 'px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-500 transition-colors';
+  saveBtn.onclick = async () => {
+    await api('PUT', '/api/config', {
+      weather: { apiKey: apiInput.value.trim(), city: cityInput.value.trim(), units: selectedUnits },
+    });
+    state.config = await api('GET', '/api/config');
+    closeModal();
+    render();
+    fetchWeather();
+  };
+  footer.appendChild(saveBtn);
+  wrap.appendChild(footer);
+
+  openModal(wrap);
+  apiInput.focus();
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -1569,7 +1731,7 @@ document.getElementById('menuClockToggle').addEventListener('click', async () =>
   const next = !state.config.showClock;
   await api('PUT', '/api/config', { showClock: next });
   state.config.showClock = next;
-  applyBase(state.config.basePalette);
+  render();
 });
 
 document.addEventListener('click', e => {
@@ -1589,11 +1751,13 @@ document.getElementById('dashTitle').addEventListener('click', openSettingsModal
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 
 function updateClock() {
-  const el = document.getElementById('clock');
-  if (el) el.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const now = new Date();
+  const timeEl = document.getElementById('clockCardTime');
+  if (timeEl) timeEl.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const dateEl = document.getElementById('clockCardDate');
+  if (dateEl) dateEl.textContent = now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
 }
 setInterval(updateClock, 30_000);
-updateClock();
 
 reload();
 
