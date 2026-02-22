@@ -2,6 +2,8 @@
 
 A self-hosted homelab dashboard. Organize links into groups, monitor service uptime, and embed widgets — all from a single Docker container.
 
+[![Docker Hub](https://img.shields.io/docker/pulls/fossfrog/tailboard?logo=docker&label=Docker+Hub)](https://hub.docker.com/r/fossfrog/tailboard)
+
 ## Features
 
 - **Link groups** — organize services into collapsible, color-accented groups with drag-to-reorder
@@ -27,7 +29,7 @@ A self-hosted homelab dashboard. Organize links into groups, monitor service upt
 ## Quick Start
 
 ```bash
-docker compose up -d
+docker run -d --name tailboard -p 3000:3000 -v tailboard-data:/data fossfrog/tailboard
 ```
 
 Open `http://localhost:3000`.
@@ -37,7 +39,7 @@ Open `http://localhost:3000`.
 ```yaml
 services:
   tailboard:
-    build: .
+    image: fossfrog/tailboard:latest
     container_name: tailboard
     restart: unless-stopped
     ports:
