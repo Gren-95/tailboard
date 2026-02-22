@@ -1,0 +1,14 @@
+services:
+  tailboard:
+    build: .
+    container_name: tailboard
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - tailboard-data:/data
+    environment:
+      - NODE_ENV=production
+
+volumes:
+  tailboard-data:

@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tailboard</title>
+  <link rel="stylesheet" href="/style.css" />
+  <style>
+    /* Drag handle cursor — also declared here so non-Tailwind browsers cover it */
+    .drag-handle { cursor: grab; }
+    .drag-handle:active { cursor: grabbing; }
+  </style>
+</head>
+<body class="bg-white dark:bg-stone-950">
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     PALETTE LOOKUP TABLES
+     All class strings are literals here so the Tailwind CLI scanner picks
+     them up at build time — never build class names via string concatenation.
+     ═══════════════════════════════════════════════════════════════════════ -->
+<script>
+// TOPBAR[palette] — solid coloured top bar; page/cards are always stone (see FIXED)
+const TOPBAR = {
+  stone:   { bar:'bg-stone-600 dark:bg-stone-800 border-stone-700 dark:border-stone-900',         text:'text-white'                 },
+  gray:    { bar:'bg-gray-600 dark:bg-gray-800 border-gray-700 dark:border-gray-900',             text:'text-white'                 },
+  zinc:    { bar:'bg-zinc-600 dark:bg-zinc-800 border-zinc-700 dark:border-zinc-900',             text:'text-white'                 },
+  slate:   { bar:'bg-slate-600 dark:bg-slate-800 border-slate-700 dark:border-slate-900',         text:'text-white'                 },
+  neutral: { bar:'bg-neutral-600 dark:bg-neutral-800 border-neutral-700 dark:border-neutral-900', text:'text-white'                 },
+  red:     { bar:'bg-red-600 dark:bg-red-800 border-red-700 dark:border-red-900',                 text:'text-white'                 },
+  orange:  { bar:'bg-orange-500 dark:bg-orange-700 border-orange-600 dark:border-orange-800',     text:'text-white'                 },
+  amber:   { bar:'bg-amber-400 dark:bg-amber-700 border-amber-500 dark:border-amber-800',         text:'text-black dark:text-white' },
+  yellow:  { bar:'bg-yellow-400 dark:bg-yellow-600 border-yellow-500 dark:border-yellow-700',     text:'text-black dark:text-white' },
+  lime:    { bar:'bg-lime-500 dark:bg-lime-700 border-lime-600 dark:border-lime-800',             text:'text-white'                 },
+  green:   { bar:'bg-green-600 dark:bg-green-800 border-green-700 dark:border-green-900',         text:'text-white'                 },
+  emerald: { bar:'bg-emerald-600 dark:bg-emerald-800 border-emerald-700 dark:border-emerald-900', text:'text-white'                 },
+  teal:    { bar:'bg-teal-600 dark:bg-teal-800 border-teal-700 dark:border-teal-900',             text:'text-white'                 },
+  cyan:    { bar:'bg-cyan-500 dark:bg-cyan-700 border-cyan-600 dark:border-cyan-800',             text:'text-white'                 },
+  sky:     { bar:'bg-sky-500 dark:bg-sky-700 border-sky-600 dark:border-sky-800',                 text:'text-white'                 },
+  blue:    { bar:'bg-blue-600 dark:bg-blue-800 border-blue-700 dark:border-blue-900',             text:'text-white'                 },
+  indigo:  { bar:'bg-indigo-600 dark:bg-indigo-800 border-indigo-700 dark:border-indigo-900',     text:'text-white'                 },
+  violet:  { bar:'bg-violet-600 dark:bg-violet-800 border-violet-700 dark:border-violet-900',     text:'text-white'                 },
+  purple:  { bar:'bg-purple-600 dark:bg-purple-800 border-purple-700 dark:border-purple-900',     text:'text-white'                 },
+  fuchsia: { bar:'bg-fuchsia-600 dark:bg-fuchsia-800 border-fuchsia-700 dark:border-fuchsia-900', text:'text-white'                 },
+  pink:    { bar:'bg-pink-500 dark:bg-pink-700 border-pink-600 dark:border-pink-800',             text:'text-white'                 },
+  rose:    { bar:'bg-rose-600 dark:bg-rose-800 border-rose-700 dark:border-rose-900',             text:'text-white'                 },
+};
+
+// FIXED — page, cards and body text are always stone regardless of palette
+const FIXED = {
+  page: 'bg-white dark:bg-stone-950',
+  card: 'bg-white dark:bg-stone-800 border-stone-200 dark:border-stone-700',
+  text: 'text-stone-900 dark:text-stone-50',
+  sub:  'text-stone-500 dark:text-stone-400',
+};
+
+// ACCENT[color] — group header bar + left border stripe on link cards
+const ACCENT = {
+  stone:   { header:'bg-stone-600 text-white',   swatch:'bg-stone-500',   border:'border-l-4 border-stone-500'   },
+  gray:    { header:'bg-gray-600 text-white',     swatch:'bg-gray-500',     border:'border-l-4 border-gray-500'     },
+  zinc:    { header:'bg-zinc-600 text-white',     swatch:'bg-zinc-500',     border:'border-l-4 border-zinc-500'     },
+  slate:   { header:'bg-slate-600 text-white',    swatch:'bg-slate-500',    border:'border-l-4 border-slate-500'    },
+  neutral: { header:'bg-neutral-600 text-white',  swatch:'bg-neutral-500',  border:'border-l-4 border-neutral-500'  },
+  red:     { header:'bg-red-600 text-white',      swatch:'bg-red-500',      border:'border-l-4 border-red-500'      },
+  orange:  { header:'bg-orange-500 text-white',   swatch:'bg-orange-500',   border:'border-l-4 border-orange-500'   },
+  amber:   { header:'bg-amber-500 text-white',    swatch:'bg-amber-500',    border:'border-l-4 border-amber-500'    },
+  yellow:  { header:'bg-yellow-400 text-black',   swatch:'bg-yellow-400',   border:'border-l-4 border-yellow-400'   },
+  lime:    { header:'bg-lime-500 text-white',     swatch:'bg-lime-500',     border:'border-l-4 border-lime-500'     },
+  green:   { header:'bg-green-600 text-white',    swatch:'bg-green-500',    border:'border-l-4 border-green-500'    },
+  emerald: { header:'bg-emerald-600 text-white',  swatch:'bg-emerald-500',  border:'border-l-4 border-emerald-500'  },
+  teal:    { header:'bg-teal-600 text-white',     swatch:'bg-teal-500',     border:'border-l-4 border-teal-500'     },
+  cyan:    { header:'bg-cyan-500 text-white',     swatch:'bg-cyan-500',     border:'border-l-4 border-cyan-500'     },
+  sky:     { header:'bg-sky-500 text-white',      swatch:'bg-sky-500',      border:'border-l-4 border-sky-500'      },
+  blue:    { header:'bg-blue-600 text-white',     swatch:'bg-blue-500',     border:'border-l-4 border-blue-500'     },
+  indigo:  { header:'bg-indigo-600 text-white',   swatch:'bg-indigo-500',   border:'border-l-4 border-indigo-500'   },
+  violet:  { header:'bg-violet-600 text-white',   swatch:'bg-violet-500',   border:'border-l-4 border-violet-500'   },
+  purple:  { header:'bg-purple-600 text-white',   swatch:'bg-purple-500',   border:'border-l-4 border-purple-500'   },
+  fuchsia: { header:'bg-fuchsia-600 text-white',  swatch:'bg-fuchsia-500',  border:'border-l-4 border-fuchsia-500'  },
+  pink:    { header:'bg-pink-500 text-white',     swatch:'bg-pink-500',     border:'border-l-4 border-pink-500'     },
+  rose:    { header:'bg-rose-600 text-white',     swatch:'bg-rose-500',     border:'border-l-4 border-rose-500'     },
+};
+
+const PALETTES = Object.keys(TOPBAR);
+
+// ICON_BG — squircle background options for link icons
+const ICON_BG_OPTIONS = [
+  { key: 'none',    label: 'None',    hex: null        },
+  { key: 'white',   label: 'White',   hex: '#ffffff'   },
+  { key: 'light',   label: 'Light',   hex: '#f1f5f9'   },
+  { key: 'dark',    label: 'Dark',    hex: '#18181b'   },
+  { key: 'blue',    label: 'Blue',    hex: '#3b82f6'   },
+  { key: 'indigo',  label: 'Indigo',  hex: '#6366f1'   },
+  { key: 'violet',  label: 'Violet',  hex: '#7c3aed'   },
+  { key: 'green',   label: 'Green',   hex: '#22c55e'   },
+  { key: 'teal',    label: 'Teal',    hex: '#14b8a6'   },
+  { key: 'orange',  label: 'Orange',  hex: '#f97316'   },
+  { key: 'red',     label: 'Red',     hex: '#ef4444'   },
+  { key: 'pink',    label: 'Pink',    hex: '#ec4899'   },
+  { key: 'yellow',  label: 'Yellow',  hex: '#eab308'   },
+];
+const ICON_BG_MAP = Object.fromEntries(
+  ICON_BG_OPTIONS.filter(o => o.hex).map(o => [o.key, o.hex])
+);
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     HTML SHELL
+     ═══════════════════════════════════════════════════════════════════════ -->
+
+<!-- Top bar -->
+<header id="topbar" class="sticky top-0 z-30 flex items-center justify-between px-6 py-3 shadow-sm border-b border-transparent transition-colors">
+  <div class="flex items-center gap-3">
+    <button id="themeToggle" title="Toggle dark/light mode"
+      class="rounded-lg p-2 text-lg hover:opacity-70 transition-opacity">
+    </button>
+    <h1 id="dashTitle" class="text-xl font-semibold tracking-tight cursor-pointer select-none" title="Click to rename"></h1>
+  </div>
+  <div class="flex items-center gap-2">
+    <button id="settingsBtn"
+      class="rounded-lg px-3 py-1.5 text-sm font-medium opacity-70 hover:opacity-100 transition-opacity"
+      title="Dashboard settings">
+      ⚙ Settings
+    </button>
+    <button id="editToggle"
+      class="rounded-lg px-4 py-1.5 text-sm font-semibold border transition-all">
+      ✏ Edit
+    </button>
+  </div>
+</header>
+
+<!-- Main grid -->
+<main id="groupsContainer" class="p-6 grid gap-5" style="grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); align-items: start;"></main>
+
+<!-- Modal overlay -->
+<div id="modalOverlay" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
+  <div id="modalBox" class="relative w-full max-w-md rounded-2xl shadow-2xl overflow-hidden">
+    <div id="modalContent" class="p-6"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     APP LOGIC
+     ═══════════════════════════════════════════════════════════════════════ -->
+<script>
+// ─── State ──────────────────────────────────────────────────────────────────
+
+let state = { config: null, editMode: false };
+
+// Drag-and-drop tracking
+let dnd = { type: null, id: null, groupId: null };
+
+// ─── API helpers ─────────────────────────────────────────────────────────────
+
+async function api(method, path, body) {
+  const res = await fetch(path, {
+    method,
+    headers: body ? { 'Content-Type': 'application/json' } : {},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) throw new Error(`${method} ${path} → ${res.status}`);
+  return res.json();
+}
+
+async function reload() {
+  state.config = await api('GET', '/api/config');
+  render();
+}
+
+// ─── Drag-and-drop helpers ────────────────────────────────────────────────────
+
+// Drop indicators use box-shadow so they don't affect layout and work inside
+// overflow:hidden containers. Indigo-500 (#6366f1) as the indicator colour.
+function clearGroupIndicators() {
+  document.querySelectorAll('.group-section').forEach(el => {
+    el.style.boxShadow = '';
+    el.style.outline = '';
+    delete el.dataset.dropPos;
+  });
+}
+
+function clearLinkIndicators() {
+  document.querySelectorAll('.link-row').forEach(el => {
+    el.style.boxShadow = '';
+    delete el.dataset.dropPos;
+  });
+  // Also clear cross-group section highlights
+  document.querySelectorAll('.group-section').forEach(el => {
+    el.style.outline = '';
+  });
+}
+
+// Create a ⠿ drag handle element
+function mkHandle(extraClass) {
+  const h = document.createElement('span');
+  h.textContent = '⠿';
+  h.title = 'Drag to reorder';
+  h.className = `drag-handle select-none flex-shrink-0 leading-none ${extraClass}`;
+  // Prevent clicks on the handle from bubbling (e.g. collapsing a group)
+  h.addEventListener('click', e => e.stopPropagation());
+  return h;
+}
+
+// Reorder helper: move item at fromIdx to before/after toIdx (after removal)
+function reorder(ids, fromId, targetId, pos) {
+  const arr = [...ids];
+  const fromIdx = arr.indexOf(fromId);
+  arr.splice(fromIdx, 1);
+  const toIdx = arr.indexOf(targetId);
+  arr.splice(pos === 'top' ? toIdx : toIdx + 1, 0, fromId);
+  return arr;
+}
+
+// ─── Theme helpers ────────────────────────────────────────────────────────────
+
+function applyTheme(dark) {
+  document.documentElement.classList.toggle('dark', dark);
+  document.getElementById('themeToggle').textContent = dark ? '☀️' : '🌙';
+}
+
+function applyBase(palette) {
+  const t = TOPBAR[palette] || TOPBAR.stone;
+  const topbar = document.getElementById('topbar');
+  topbar.className = `sticky top-0 z-30 flex items-center justify-between px-6 py-3 shadow-sm border-b transition-colors ${t.bar} ${t.text}`;
+
+  const et = document.getElementById('editToggle');
+  et.className = `rounded-lg px-4 py-1.5 text-sm font-semibold border transition-all ${
+    state.editMode
+      ? 'bg-white/20 border-white/50'
+      : 'border-current opacity-60 hover:opacity-100'
+  }`;
+}
+
+// ─── Render ──────────────────────────────────────────────────────────────────
+
+function render() {
+  const cfg = state.config;
+  const b = FIXED;
+
+  document.title = cfg.title || 'Tailboard';
+  document.getElementById('dashTitle').textContent = cfg.title || 'Tailboard';
+  applyTheme(cfg.darkMode);
+  applyBase(cfg.basePalette);
+
+  const container = document.getElementById('groupsContainer');
+  container.innerHTML = '';
+
+  cfg.groups.forEach((group) => {
+    const acc = ACCENT[group.accent] || ACCENT.slate;
+
+    // ── Group card ────────────────────────────────────────────────────────────
+    const section = document.createElement('div');
+    section.className = `group-section rounded-xl overflow-hidden border shadow-md transition-opacity duration-150 ${b.card}`;
+    section.dataset.groupId = group.id;
+
+    // Group drop-target events: accepts group reordering AND cross-group link drops
+    if (state.editMode) {
+      section.addEventListener('dragover', e => {
+        if (dnd.type === 'group' && dnd.id !== group.id) {
+          e.preventDefault();
+          e.stopPropagation();
+          clearGroupIndicators();
+          const dragged = document.querySelector(`.group-section[data-group-id="${dnd.id}"]`);
+          if (dragged) dragged.style.opacity = '0.4';
+          const rect = section.getBoundingClientRect();
+          const pos = e.clientY < rect.top + rect.height / 2 ? 'top' : 'bottom';
+          section.style.boxShadow = pos === 'top' ? '0 -3px 0 0 #6366f1' : '0 3px 0 0 #6366f1';
+          section.dataset.dropPos = pos;
+        } else if (dnd.type === 'link' && dnd.groupId !== group.id) {
+          // Cross-group link drop — highlight the whole section as the target
+          e.preventDefault();
+          e.stopPropagation();
+          clearLinkIndicators();
+          const dragged = document.querySelector(`.link-row[data-link-id="${dnd.id}"]`);
+          if (dragged) dragged.style.opacity = '0.4';
+          section.style.outline = '2px dashed #6366f1';
+          section.style.outlineOffset = '-3px';
+        }
+      });
+
+      section.addEventListener('dragleave', e => {
+        if (!section.contains(e.relatedTarget)) {
+          section.style.boxShadow = '';
+          section.style.outline = '';
+          delete section.dataset.dropPos;
+        }
+      });
+
+      section.addEventListener('drop', async e => {
+        e.preventDefault();
+        if (dnd.type === 'group' && dnd.id !== group.id) {
+          const pos = section.dataset.dropPos || 'bottom';
+          clearGroupIndicators();
+          const order = reorder(cfg.groups.map(g => g.id), dnd.id, group.id, pos);
+          dnd = { type: null };
+          await api('PUT', '/api/groups/reorder', { order });
+          await reload();
+        } else if (dnd.type === 'link' && dnd.groupId !== group.id) {
+          // Append to end of this group
+          clearLinkIndicators();
+          const { id: linkId, groupId: sourceGroupId } = dnd;
+          dnd = { type: null };
+          await api('POST', '/api/links/move', { linkId, sourceGroupId, targetGroupId: group.id });
+          await reload();
+        }
+      });
+    }
+
+    // ── Group header ──────────────────────────────────────────────────────────
+    const header = document.createElement('div');
+    header.className = `flex items-center justify-between px-4 py-2.5 cursor-pointer select-none ${acc.header}`;
+
+    const leftSide = document.createElement('div');
+    leftSide.className = 'flex items-center gap-2 min-w-0 flex-1';
+
+    if (state.editMode) {
+      const handle = mkHandle('text-white/60 hover:text-white/90 text-base');
+      handle.draggable = true;
+      handle.addEventListener('dragstart', e => {
+        e.stopPropagation();
+        dnd = { type: 'group', id: group.id };
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', group.id);
+        e.dataTransfer.setDragImage(section, 20, 10);
+        setTimeout(() => { section.style.opacity = '0.4'; }, 0);
+      });
+      handle.addEventListener('dragend', () => {
+        clearGroupIndicators();
+        dnd = { type: null };
+      });
+      leftSide.appendChild(handle);
+    }
+
+    const titleSpan = document.createElement('span');
+    titleSpan.className = 'font-semibold text-sm tracking-wide truncate';
+    titleSpan.textContent = group.name;
+    leftSide.appendChild(titleSpan);
+
+    const rightControls = document.createElement('div');
+    rightControls.className = 'flex items-center gap-1 flex-shrink-0';
+
+    if (state.editMode) {
+      rightControls.appendChild(mkBtn('✎', 'Edit group', 'text-white/80 hover:text-white text-base px-1', e => {
+        e.stopPropagation();
+        openGroupModal(group);
+      }));
+      rightControls.appendChild(mkBtn('✕', 'Delete group', 'text-white/70 hover:text-white text-base px-1', async e => {
+        e.stopPropagation();
+        if (!confirm(`Delete group "${group.name}" and all its links?`)) return;
+        await api('DELETE', `/api/groups/${group.id}`);
+        await reload();
+      }));
+    }
+
+    const chevron = document.createElement('span');
+    chevron.className = 'ml-1 text-white/80 text-xs';
+    chevron.textContent = group.collapsed ? '▶' : '▾';
+    rightControls.appendChild(chevron);
+
+    header.appendChild(leftSide);
+    header.appendChild(rightControls);
+    header.addEventListener('click', async () => {
+      await api('PUT', `/api/groups/${group.id}`, { collapsed: !group.collapsed });
+      await reload();
+    });
+    section.appendChild(header);
+
+    // ── Links ─────────────────────────────────────────────────────────────────
+    const linksWrap = document.createElement('div');
+    linksWrap.className = group.collapsed ? 'hidden' : '';
+
+    if (group.links.length > 0) {
+      const grid = document.createElement('div');
+      grid.className = 'flex flex-col divide-y divide-black/[0.06] dark:divide-white/[0.08]';
+
+      group.links.forEach((link) => {
+        const row = document.createElement('div');
+        row.className = `link-row flex items-center gap-3 px-3 py-2.5 ${acc.border} transition-opacity duration-100`;
+        row.dataset.linkId = link.id;
+
+        if (state.editMode) {
+          // Link drag handle
+          const handle = mkHandle(`text-base opacity-30 hover:opacity-70 ${b.sub}`);
+          handle.draggable = true;
+          handle.addEventListener('dragstart', e => {
+            e.stopPropagation();
+            dnd = { type: 'link', id: link.id, groupId: group.id };
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', link.id);
+            e.dataTransfer.setDragImage(row, 20, 10);
+            setTimeout(() => { row.style.opacity = '0.4'; }, 0);
+          });
+          handle.addEventListener('dragend', () => {
+            clearLinkIndicators();
+            dnd = { type: null };
+          });
+          row.appendChild(handle);
+
+          // Link drop-target events — accepts same-group reorder AND cross-group moves
+          row.addEventListener('dragover', e => {
+            if (dnd.type !== 'link' || dnd.id === link.id) return;
+            e.preventDefault();
+            e.stopPropagation(); // don't bubble to group dragover
+            clearLinkIndicators();
+            const dragged = document.querySelector(`.link-row[data-link-id="${dnd.id}"]`);
+            if (dragged) dragged.style.opacity = '0.4';
+            const rect = row.getBoundingClientRect();
+            const pos = e.clientY < rect.top + rect.height / 2 ? 'top' : 'bottom';
+            row.style.boxShadow = pos === 'top' ? '0 -2px 0 0 #6366f1' : '0 2px 0 0 #6366f1';
+            row.dataset.dropPos = pos;
+          });
+
+          row.addEventListener('dragleave', e => {
+            if (!row.contains(e.relatedTarget)) {
+              row.style.boxShadow = '';
+              delete row.dataset.dropPos;
+            }
+          });
+
+          row.addEventListener('drop', async e => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (dnd.type !== 'link' || dnd.id === link.id) return;
+            const pos = row.dataset.dropPos || 'bottom';
+            clearLinkIndicators();
+
+            if (dnd.groupId === group.id) {
+              // Same group — reorder
+              const order = reorder(group.links.map(l => l.id), dnd.id, link.id, pos);
+              const gid = group.id;
+              dnd = { type: null };
+              await api('PUT', `/api/groups/${gid}/links/reorder`, { order });
+            } else {
+              // Cross-group — move with precise insertion point
+              const { id: linkId, groupId: sourceGroupId } = dnd;
+              dnd = { type: null };
+              await api('POST', '/api/links/move', {
+                linkId,
+                sourceGroupId,
+                targetGroupId: group.id,
+                targetLinkId: link.id,
+                position: pos === 'top' ? 'before' : 'after',
+              });
+            }
+            await reload();
+          });
+        } else {
+          row.classList.add('cursor-pointer', 'hover:bg-black/5', 'dark:hover:bg-white/5');
+          row.addEventListener('click', () => window.open(link.url, '_blank', 'noopener'));
+        }
+
+        // Icon
+        const iconWrap = document.createElement('div');
+        iconWrap.className = 'flex-shrink-0 w-9 h-9 flex items-center justify-center';
+        const iconBgHex = ICON_BG_MAP[link.iconBg || 'none'];
+        if (iconBgHex) {
+          iconWrap.style.cssText = `border-radius:22%;background-color:${iconBgHex};padding:5px;`;
+        }
+        if (link.icon) {
+          const img = document.createElement('img');
+          img.src = `/api/icon/${link.icon}`;
+          img.alt = link.name;
+          img.className = 'w-full h-full object-contain';
+          img.onerror = () => img.replaceWith(mkPlaceholderIcon(b.sub));
+          iconWrap.appendChild(img);
+        } else {
+          iconWrap.appendChild(mkPlaceholderIcon(b.sub));
+        }
+
+        // Text
+        const textWrap = document.createElement('div');
+        textWrap.className = 'flex-1 min-w-0';
+        const nameEl = document.createElement('div');
+        nameEl.className = `text-sm font-medium truncate ${b.text}`;
+        nameEl.textContent = link.name;
+        textWrap.appendChild(nameEl);
+        if (link.description) {
+          const desc = document.createElement('div');
+          desc.className = `text-xs truncate ${b.sub}`;
+          desc.textContent = link.description;
+          textWrap.appendChild(desc);
+        }
+
+        row.appendChild(iconWrap);
+        row.appendChild(textWrap);
+
+        if (state.editMode) {
+          const editControls = document.createElement('div');
+          editControls.className = 'flex items-center gap-1 flex-shrink-0';
+          editControls.appendChild(mkBtn('✎', 'Edit link', `text-xs px-1 rounded ${b.sub} hover:opacity-100 opacity-60`, () => openLinkModal(group.id, link)));
+          editControls.appendChild(mkBtn('✕', 'Delete link', 'text-xs px-1 rounded text-red-400 hover:opacity-100 opacity-60', async () => {
+            if (!confirm(`Delete link "${link.name}"?`)) return;
+            await api('DELETE', `/api/groups/${group.id}/links/${link.id}`);
+            await reload();
+          }));
+          row.appendChild(editControls);
+        }
+
+        grid.appendChild(row);
+      });
+
+      linksWrap.appendChild(grid);
+    } else if (!state.editMode) {
+      const empty = document.createElement('p');
+      empty.className = `px-4 py-3 text-xs ${b.sub} italic`;
+      empty.textContent = 'No links yet.';
+      linksWrap.appendChild(empty);
+    }
+
+    if (state.editMode) {
+      const addLinkBtn = document.createElement('button');
+      addLinkBtn.className = `w-full text-left px-4 py-2.5 text-xs font-medium border-t border-black/5 dark:border-white/5 ${b.sub} hover:bg-black/5 dark:hover:bg-white/5 transition-colors`;
+      addLinkBtn.textContent = '+ Add link';
+      addLinkBtn.onclick = () => openLinkModal(group.id);
+      linksWrap.appendChild(addLinkBtn);
+    }
+
+    section.appendChild(linksWrap);
+    container.appendChild(section);
+  });
+
+  // Add Group button (edit mode)
+  if (state.editMode) {
+    const addGroupBtn = document.createElement('button');
+    addGroupBtn.className = `rounded-xl border-2 border-dashed border-stone-300 dark:border-stone-600 p-6 text-sm font-medium ${FIXED.sub} hover:bg-black/5 dark:hover:bg-white/5 transition-colors w-full`;
+    addGroupBtn.innerHTML = '<span class="text-2xl block mb-1">+</span>Add group';
+    addGroupBtn.onclick = () => openGroupModal();
+    container.appendChild(addGroupBtn);
+  }
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function mkBtn(label, title, cls, handler) {
+  const btn = document.createElement('button');
+  btn.textContent = label;
+  btn.title = title;
+  btn.className = cls;
+  btn.addEventListener('click', handler);
+  return btn;
+}
+
+function mkPlaceholderIcon(colorClass) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('class', `w-6 h-6 ${colorClass}`);
+  svg.setAttribute('fill', 'currentColor');
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', 'M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2Zm0 3a7 7 0 1 1 0 14A7 7 0 0 1 12 5Zm-1 4h2v5h-2V9Zm0 6h2v2h-2v-2Z');
+  svg.appendChild(path);
+  return svg;
+}
+
+// ─── Colour swatch picker ─────────────────────────────────────────────────────
+
+function mkSwatchPicker(selectedColor, colors, getSwatchClass, onSelect) {
+  const wrap = document.createElement('div');
+  wrap.className = 'flex flex-wrap gap-2 mt-1';
+  colors.forEach(color => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.title = color;
+    btn.dataset.color = color;
+    const swatchClass = getSwatchClass(color);
+    const isSelected = color === selectedColor;
+    btn.className = `w-7 h-7 rounded-full ${swatchClass} transition-all ${isSelected ? 'ring-2 ring-offset-2 ring-current scale-110' : 'opacity-70 hover:opacity-100 hover:scale-105'}`;
+    btn.addEventListener('click', () => {
+      wrap.querySelectorAll('button').forEach(b => {
+        b.className = `w-7 h-7 rounded-full ${getSwatchClass(b.dataset.color)} transition-all opacity-70 hover:opacity-100 hover:scale-105`;
+      });
+      btn.className = `w-7 h-7 rounded-full ${swatchClass} transition-all ring-2 ring-offset-2 ring-current scale-110`;
+      onSelect(color);
+    });
+    wrap.appendChild(btn);
+  });
+  return wrap;
+}
+
+// ─── Modal system ─────────────────────────────────────────────────────────────
+
+function openModal(contentEl) {
+  const b = FIXED;
+  const box = document.getElementById('modalBox');
+  box.className = `relative w-full max-w-md rounded-2xl shadow-2xl overflow-hidden ${b.card.split(' ').slice(0, 2).join(' ')}`;
+  document.getElementById('modalContent').innerHTML = '';
+  document.getElementById('modalContent').appendChild(contentEl);
+  document.getElementById('modalOverlay').classList.remove('hidden');
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').classList.add('hidden');
+}
+
+document.getElementById('modalOverlay').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeModal();
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeModal();
+});
+
+// ─── Group modal ──────────────────────────────────────────────────────────────
+
+function openGroupModal(group) {
+  const b = FIXED;
+  let selectedAccent = group ? group.accent : 'slate';
+  const wrap = document.createElement('div');
+
+  const title = document.createElement('h2');
+  title.className = `text-lg font-semibold mb-4 ${b.text}`;
+  title.textContent = group ? 'Edit group' : 'Add group';
+  wrap.appendChild(title);
+
+  wrap.appendChild(mkLabel('Group name', b.sub));
+  const nameInput = mkInput(group ? group.name : '', 'e.g. Media, Infrastructure', b);
+  wrap.appendChild(nameInput);
+
+  const accLabel = mkLabel('Accent colour', b.sub);
+  accLabel.className += ' mt-4 block';
+  wrap.appendChild(accLabel);
+  wrap.appendChild(mkSwatchPicker(selectedAccent, PALETTES, c => ACCENT[c].swatch, c => { selectedAccent = c; }));
+
+  const footer = document.createElement('div');
+  footer.className = 'flex justify-end gap-2 mt-6';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.className = `px-4 py-2 rounded-lg text-sm font-medium border ${b.text} opacity-60 hover:opacity-100 transition-opacity`;
+  cancelBtn.onclick = closeModal;
+  footer.appendChild(cancelBtn);
+
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.textContent = group ? 'Save' : 'Create';
+  saveBtn.className = 'px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-500 transition-colors';
+  saveBtn.onclick = async () => {
+    const name = nameInput.value.trim();
+    if (!name) { nameInput.focus(); return; }
+    if (group) {
+      await api('PUT', `/api/groups/${group.id}`, { name, accent: selectedAccent });
+    } else {
+      await api('POST', '/api/groups', { name, accent: selectedAccent });
+    }
+    closeModal();
+    await reload();
+  };
+  footer.appendChild(saveBtn);
+  wrap.appendChild(footer);
+
+  openModal(wrap);
+  nameInput.focus();
+}
+
+// ─── Link modal ───────────────────────────────────────────────────────────────
+
+function openLinkModal(groupId, link) {
+  const b = FIXED;
+  const wrap = document.createElement('div');
+
+  const title = document.createElement('h2');
+  title.className = `text-lg font-semibold mb-4 ${b.text}`;
+  title.textContent = link ? 'Edit link' : 'Add link';
+  wrap.appendChild(title);
+
+  wrap.appendChild(mkLabel('Name', b.sub));
+  const nameInput = mkInput(link ? link.name : '', 'e.g. Plex', b);
+  wrap.appendChild(nameInput);
+
+  const urlLabel = mkLabel('URL', b.sub);
+  urlLabel.className += ' mt-3 block';
+  wrap.appendChild(urlLabel);
+  const urlInput = mkInput(link ? link.url : '', 'http://192.168.1.10:32400', b);
+  urlInput.type = 'url';
+  wrap.appendChild(urlInput);
+
+  const iconLabel = mkLabel('Icon slug', b.sub);
+  iconLabel.className += ' mt-3 block';
+  wrap.appendChild(iconLabel);
+
+  const iconRow = document.createElement('div');
+  iconRow.className = 'flex items-center gap-3';
+  const iconInput = mkInput(link ? link.icon : '', 'e.g. plex, jellyfin, portainer', b);
+  iconInput.className += ' flex-1';
+  iconRow.appendChild(iconInput);
+
+  const iconPreview = document.createElement('img');
+  iconPreview.className = 'w-9 h-9 object-contain flex-shrink-0';
+  iconPreview.style.display = 'none';
+  iconPreview.alt = 'icon preview';
+  iconPreview.onerror = () => { iconPreview.style.display = 'none'; };
+  iconRow.appendChild(iconPreview);
+
+  function updateIconPreview() {
+    const slug = iconInput.value.trim().replace(/[^a-z0-9-]/g, '');
+    if (slug) {
+      iconPreview.src = `/api/icon/${slug}?t=${Date.now()}`;
+      iconPreview.style.display = 'block';
+    } else {
+      iconPreview.style.display = 'none';
+    }
+  }
+  iconInput.addEventListener('input', updateIconPreview);
+  if (link && link.icon) updateIconPreview();
+
+  wrap.appendChild(iconRow);
+  const iconHint = document.createElement('p');
+  iconHint.className = `text-xs mt-1 ${b.sub}`;
+  iconHint.innerHTML = 'Find slugs at <a href="https://dashboardicons.com/icons" target="_blank" rel="noopener" class="underline">dashboardicons.com/icons</a>';
+  wrap.appendChild(iconHint);
+
+  // Icon background (squircle colour)
+  let selectedIconBg = link ? (link.iconBg || 'none') : 'none';
+  const bgLabel = mkLabel('Icon background', b.sub);
+  bgLabel.className += ' mt-3 block';
+  wrap.appendChild(bgLabel);
+
+  const bgPicker = document.createElement('div');
+  bgPicker.className = 'flex flex-wrap gap-2 mt-1 items-center';
+
+  ICON_BG_OPTIONS.forEach(opt => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.title = opt.label;
+    btn.dataset.key = opt.key;
+    btn.className = 'w-7 h-7 rounded-full border-2 transition-all flex-shrink-0';
+
+    if (opt.hex) {
+      btn.style.backgroundColor = opt.hex;
+      btn.style.borderColor = opt.key === 'white' || opt.key === 'light' ? '#d1d5db' : opt.hex;
+    } else {
+      // "None" — diagonal line through white circle
+      btn.style.background = 'linear-gradient(to bottom right,#fff calc(50% - 1px),#ef4444 calc(50% - 1px),#ef4444 calc(50% + 1px),#fff calc(50% + 1px))';
+      btn.style.borderColor = '#d1d5db';
+    }
+
+    const isSelected = opt.key === selectedIconBg;
+    btn.style.outline = isSelected ? '2px solid #6366f1' : 'none';
+    btn.style.outlineOffset = '2px';
+    btn.style.opacity = isSelected ? '1' : '0.7';
+    btn.style.transform = isSelected ? 'scale(1.15)' : 'scale(1)';
+
+    btn.addEventListener('click', () => {
+      selectedIconBg = opt.key;
+      bgPicker.querySelectorAll('button').forEach(b2 => {
+        b2.style.outline = 'none';
+        b2.style.opacity = '0.7';
+        b2.style.transform = 'scale(1)';
+      });
+      btn.style.outline = '2px solid #6366f1';
+      btn.style.outlineOffset = '2px';
+      btn.style.opacity = '1';
+      btn.style.transform = 'scale(1.15)';
+    });
+
+    bgPicker.appendChild(btn);
+  });
+  wrap.appendChild(bgPicker);
+
+  const descLabel = mkLabel('Description (optional)', b.sub);
+  descLabel.className += ' mt-3 block';
+  wrap.appendChild(descLabel);
+  const descInput = mkInput(link ? link.description : '', 'Short note…', b);
+  wrap.appendChild(descInput);
+
+  // Group picker — lets user move an existing link to a different group
+  let targetGroupId = groupId;
+  if (state.config.groups.length > 1) {
+    const groupLabel = mkLabel('Group', b.sub);
+    groupLabel.className += ' mt-3 block';
+    wrap.appendChild(groupLabel);
+
+    const groupSelect = document.createElement('select');
+    groupSelect.className = `w-full px-3 py-2 rounded-lg text-sm border ${b.card} ${b.text} focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all`;
+    state.config.groups.forEach(g => {
+      const opt = document.createElement('option');
+      opt.value = g.id;
+      opt.textContent = g.name;
+      opt.selected = g.id === groupId;
+      groupSelect.appendChild(opt);
+    });
+    groupSelect.addEventListener('change', () => { targetGroupId = groupSelect.value; });
+    wrap.appendChild(groupSelect);
+  }
+
+  const footer = document.createElement('div');
+  footer.className = 'flex justify-end gap-2 mt-6';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.className = `px-4 py-2 rounded-lg text-sm font-medium border ${b.text} opacity-60 hover:opacity-100 transition-opacity`;
+  cancelBtn.onclick = closeModal;
+  footer.appendChild(cancelBtn);
+
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.textContent = link ? 'Save' : 'Add';
+  saveBtn.className = 'px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-500 transition-colors';
+  saveBtn.onclick = async () => {
+    const name = nameInput.value.trim();
+    const url = urlInput.value.trim();
+    if (!name) { nameInput.focus(); return; }
+    if (!url) { urlInput.focus(); return; }
+    const payload = {
+      name, url,
+      icon: iconInput.value.trim().replace(/[^a-z0-9-]/g, ''),
+      iconBg: selectedIconBg,
+      description: descInput.value.trim(),
+    };
+    if (link) {
+      if (targetGroupId !== groupId) {
+        // Move to new group first, then update fields
+        await api('POST', '/api/links/move', {
+          linkId: link.id,
+          sourceGroupId: groupId,
+          targetGroupId,
+        });
+        await api('PUT', `/api/groups/${targetGroupId}/links/${link.id}`, payload);
+      } else {
+        await api('PUT', `/api/groups/${groupId}/links/${link.id}`, payload);
+      }
+    } else {
+      await api('POST', `/api/groups/${groupId}/links`, payload);
+    }
+    closeModal();
+    await reload();
+  };
+  footer.appendChild(saveBtn);
+  wrap.appendChild(footer);
+
+  openModal(wrap);
+  nameInput.focus();
+}
+
+// ─── Settings modal ───────────────────────────────────────────────────────────
+
+function openSettingsModal() {
+  const cfg = state.config;
+  const b = FIXED;
+  let selectedBase = cfg.basePalette;
+  const wrap = document.createElement('div');
+
+  const title = document.createElement('h2');
+  title.className = `text-lg font-semibold mb-4 ${b.text}`;
+  title.textContent = 'Dashboard settings';
+  wrap.appendChild(title);
+
+  wrap.appendChild(mkLabel('Dashboard title', b.sub));
+  const titleInput = mkInput(cfg.title || '', 'My Dashboard', b);
+  wrap.appendChild(titleInput);
+
+  const bpLabel = mkLabel('Base palette', b.sub);
+  bpLabel.className += ' mt-4 block';
+  wrap.appendChild(bpLabel);
+  const bpHint = document.createElement('p');
+  bpHint.className = `text-xs mb-2 ${b.sub}`;
+  bpHint.textContent = 'Colours the top bar. Page and cards are always stone.';
+  wrap.appendChild(bpHint);
+  wrap.appendChild(mkSwatchPicker(
+    selectedBase, PALETTES,
+    c => ACCENT[c].swatch,
+    c => { selectedBase = c; }
+  ));
+
+  const footer = document.createElement('div');
+  footer.className = 'flex justify-end gap-2 mt-6';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.className = `px-4 py-2 rounded-lg text-sm font-medium border ${b.text} opacity-60 hover:opacity-100 transition-opacity`;
+  cancelBtn.onclick = closeModal;
+  footer.appendChild(cancelBtn);
+
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.textContent = 'Save';
+  saveBtn.className = 'px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-500 transition-colors';
+  saveBtn.onclick = async () => {
+    const newTitle = titleInput.value.trim() || 'My Dashboard';
+    await api('PUT', '/api/config', { title: newTitle, basePalette: selectedBase });
+    closeModal();
+    await reload();
+  };
+  footer.appendChild(saveBtn);
+  wrap.appendChild(footer);
+
+  openModal(wrap);
+  titleInput.focus();
+}
+
+// ─── Form helpers ─────────────────────────────────────────────────────────────
+
+function mkLabel(text, subClass) {
+  const el = document.createElement('label');
+  el.className = `block text-xs font-semibold uppercase tracking-wider mb-1 ${subClass}`;
+  el.textContent = text;
+  return el;
+}
+
+function mkInput(value, placeholder, b) {
+  const el = document.createElement('input');
+  el.type = 'text';
+  el.value = value || '';
+  el.placeholder = placeholder || '';
+  el.className = `w-full px-3 py-2 rounded-lg text-sm border ${b.card} ${b.text} focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all`;
+  return el;
+}
+
+// ─── Wire up controls ─────────────────────────────────────────────────────────
+
+document.getElementById('themeToggle').addEventListener('click', async () => {
+  const dark = !state.config.darkMode;
+  state.config.darkMode = dark;
+  applyTheme(dark);
+  await api('PUT', '/api/config', { darkMode: dark });
+});
+
+document.getElementById('editToggle').addEventListener('click', () => {
+  state.editMode = !state.editMode;
+  render();
+});
+
+document.getElementById('settingsBtn').addEventListener('click', openSettingsModal);
+document.getElementById('dashTitle').addEventListener('click', openSettingsModal);
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+
+reload();
+</script>
+
+</body>
+</html>
