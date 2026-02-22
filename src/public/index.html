@@ -131,8 +131,9 @@ const WIDGET = {
 
 <!-- Top bar -->
 <header id="topbar" class="sticky top-0 z-30 flex items-center justify-between px-6 py-3 shadow-sm border-b border-transparent transition-colors">
-  <div class="flex items-center gap-3">
-    <h1 id="dashTitle" class="text-xl font-semibold tracking-tight cursor-pointer select-none" title="Click to rename"></h1>
+  <div class="flex items-center gap-2">
+    <img id="topbarFavicon" src="/api/favicon" alt="" class="w-6 h-6 object-contain flex-shrink-0" onerror="this.style.display='none'">
+    <h1 id="dashTitle" class="text-xl font-semibold tracking-tight select-none"></h1>
   </div>
   <div class="relative">
     <button id="menuBtn" title="Menu"
@@ -2231,8 +2232,11 @@ function showToast(message, type = 'success') {
 // ─── Favicon helper ───────────────────────────────────────────────────────────
 
 function refreshFavicon() {
+  const t = Date.now();
   const link = document.getElementById('faviconLink');
-  if (link) link.href = '/api/favicon?t=' + Date.now();
+  if (link) link.href = '/api/favicon?t=' + t;
+  const img = document.getElementById('topbarFavicon');
+  if (img) { img.style.display = ''; img.src = '/api/favicon?t=' + t; }
 }
 
 // ─── Config import / export ───────────────────────────────────────────────────
@@ -3259,7 +3263,6 @@ document.getElementById('searchInput').addEventListener('input', e => {
   renderSearchResults(e.target.value);
 });
 
-document.getElementById('dashTitle').addEventListener('click', openSettingsModal);
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 
