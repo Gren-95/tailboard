@@ -4,6 +4,8 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const { randomUUID } = require('crypto');
+const http  = require('node:http');
+const https = require('node:https');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -45,9 +47,69 @@ function findGroup(cfg, groupId) {
   return cfg.groups.find(g => g.id === groupId);
 }
 
+// ─── Service status ───────────────────────────────────────────────────────────
+
+/** linkId → 'up' | 'down' (in-memory only, resets on restart) */
+const statusCache = new Map();
+
+/**
+ * Ping a URL via HEAD using node:http/https directly so we can set
+ * rejectUnauthorized:false — self-signed certs are common in homelabs.
+ * Never rejects; resolves to 'up' or 'down'.
+ */
+function checkLink(url) {
+  return new Promise(resolve => {
+    let settled = false;
+    const done = result => { if (!settled) { settled = true; resolve(result); } };
+
+    let parsed;
+    try { parsed = new URL(url); } catch { return done('down'); }
+
+    const isHttps = parsed.protocol === 'https:';
+    const mod     = isHttps ? https : http;
+    const port    = parsed.port ? Number(parsed.port) : (isHttps ? 443 : 80);
+
+    const req = mod.request({
+      method:             'HEAD',
+      hostname:           parsed.hostname,
+      port,
+      path:               parsed.pathname + parsed.search,
+      timeout:            5000,
+      rejectUnauthorized: false,
+    }, res => {
+      res.resume(); // drain socket
+      done(res.statusCode < 500 ? 'up' : 'down');
+    });
+
+    req.on('timeout', () => { req.destroy(); done('down'); });
+    req.on('error',   () => done('down'));
+    req.end();
+  });
+}
+
+async function refreshAllStatuses() {
+  const cfg   = loadConfig();
+  const links = cfg.groups.flatMap(g => g.links);
+  await Promise.all(
+    links.map(async link => {
+      statusCache.set(link.id, await checkLink(link.url));
+    })
+  );
+}
+
+// Check 2 s after startup (give server time to settle), then every 60 s
+setTimeout(() => {
+  refreshAllStatuses();
+  setInterval(refreshAllStatuses, 60_000);
+}, 2_000);
+
 // ─── Health ───────────────────────────────────────────────────────────────────
 
 app.get('/health', (req, res) => res.json({ ok: true }));
+
+app.get('/api/status', (req, res) => {
+  res.json(Object.fromEntries(statusCache));
+});
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -63,6 +125,30 @@ app.put('/api/config', (req, res) => {
   if (darkMode !== undefined) cfg.darkMode = Boolean(darkMode);
   saveConfig(cfg);
   res.json(cfg);
+});
+
+app.get('/api/config/export', (req, res) => {
+  const cfg = loadConfig();
+  res.setHeader('Content-Disposition', 'attachment; filename="tailboard-config.json"');
+  res.setHeader('Content-Type', 'application/json');
+  res.send(JSON.stringify(cfg, null, 2));
+});
+
+app.post('/api/config/import', (req, res) => {
+  const body = req.body;
+  if (!body || !Array.isArray(body.groups)) {
+    return res.status(400).json({ error: 'invalid config: groups array required' });
+  }
+  const current = loadConfig();
+  const merged = {
+    ...current,
+    title:       typeof body.title       === 'string'  ? body.title       : current.title,
+    basePalette: typeof body.basePalette === 'string'  ? body.basePalette : current.basePalette,
+    darkMode:    typeof body.darkMode    === 'boolean' ? body.darkMode    : current.darkMode,
+    groups:      body.groups,
+  };
+  saveConfig(merged);
+  res.json({ ok: true });
 });
 
 // ─── Icon proxy + cache ───────────────────────────────────────────────────────

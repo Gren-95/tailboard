@@ -115,6 +115,11 @@ const ICON_BG_MAP = Object.fromEntries(
     <h1 id="dashTitle" class="text-xl font-semibold tracking-tight cursor-pointer select-none" title="Click to rename"></h1>
   </div>
   <div class="flex items-center gap-2">
+    <button id="searchBtn"
+      class="rounded-lg px-3 py-1.5 text-sm font-medium opacity-70 hover:opacity-100 transition-opacity"
+      title="Search links (Ctrl+K)">
+      🔍 Search
+    </button>
     <button id="settingsBtn"
       class="rounded-lg px-3 py-1.5 text-sm font-medium opacity-70 hover:opacity-100 transition-opacity"
       title="Dashboard settings">
@@ -137,6 +142,19 @@ const ICON_BG_MAP = Object.fromEntries(
   </div>
 </div>
 
+<!-- Search overlay -->
+<div id="searchOverlay" class="hidden fixed inset-0 bg-black/60 z-[60] flex items-start justify-center pt-24 px-4" role="dialog" aria-modal="true" aria-label="Quick search">
+  <div class="w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700">
+    <div class="flex items-center gap-3 px-4 py-3 border-b border-stone-200 dark:border-stone-700">
+      <span class="text-stone-400 dark:text-stone-500 text-lg select-none">🔍</span>
+      <input id="searchInput" type="text" placeholder="Search links…"
+        class="flex-1 bg-transparent text-sm text-stone-900 dark:text-stone-50 placeholder-stone-400 dark:placeholder-stone-500 outline-none" />
+      <kbd class="hidden sm:inline-block text-xs font-mono px-1.5 py-0.5 rounded border border-stone-300 dark:border-stone-600 text-stone-400 dark:text-stone-500">Esc</kbd>
+    </div>
+    <ul id="searchResults" class="max-h-96 overflow-y-auto divide-y divide-stone-100 dark:divide-stone-700/60" role="listbox"></ul>
+  </div>
+</div>
+
 <!-- ═══════════════════════════════════════════════════════════════════════════
      APP LOGIC
      ═══════════════════════════════════════════════════════════════════════ -->
@@ -147,6 +165,13 @@ let state = { config: null, editMode: false };
 
 // Drag-and-drop tracking
 let dnd = { type: null, id: null, groupId: null };
+
+// Service status  (linkId → 'up' | 'down')
+let statusMap = {};
+
+// Search overlay
+let searchOpen = false;
+let selectedSearchIdx = -1;
 
 // ─── API helpers ─────────────────────────────────────────────────────────────
 
@@ -163,7 +188,11 @@ async function api(method, path, body) {
 async function reload() {
   state.config = await api('GET', '/api/config');
   render();
+  applyStatusDots();
 }
+
+// Start status polling: first poll 3 s after page load, then every 30 s
+setTimeout(() => { pollStatus(); setInterval(pollStatus, 30_000); }, 3_000);
 
 // ─── Drag-and-drop helpers ────────────────────────────────────────────────────
 
@@ -447,23 +476,8 @@ function render() {
           row.addEventListener('click', () => window.open(link.url, '_blank', 'noopener'));
         }
 
-        // Icon
-        const iconWrap = document.createElement('div');
-        iconWrap.className = 'flex-shrink-0 w-9 h-9 flex items-center justify-center';
-        const iconBgHex = ICON_BG_MAP[link.iconBg || 'none'];
-        if (iconBgHex) {
-          iconWrap.style.cssText = `border-radius:22%;background-color:${iconBgHex};padding:5px;`;
-        }
-        if (link.icon) {
-          const img = document.createElement('img');
-          img.src = `/api/icon/${link.icon}`;
-          img.alt = link.name;
-          img.className = 'w-full h-full object-contain';
-          img.onerror = () => img.replaceWith(mkPlaceholderIcon(b.sub));
-          iconWrap.appendChild(img);
-        } else {
-          iconWrap.appendChild(mkPlaceholderIcon(b.sub));
-        }
+        // Icon (includes status dot)
+        const iconWrap = mkIconWrap(link);
 
         // Text
         const textWrap = document.createElement('div');
@@ -549,6 +563,58 @@ function mkPlaceholderIcon(colorClass) {
   return svg;
 }
 
+// ─── Icon wrap helper ─────────────────────────────────────────────────────────
+
+/** Returns a position:relative wrapper containing the icon + status dot. */
+function mkIconWrap(link) {
+  const outer = document.createElement('div');
+  outer.className = 'relative flex-shrink-0 w-9 h-9';
+
+  const inner = document.createElement('div');
+  inner.className = 'w-full h-full flex items-center justify-center';
+  const iconBgHex = ICON_BG_MAP[link.iconBg || 'none'];
+  if (iconBgHex) {
+    inner.style.cssText = `border-radius:22%;background-color:${iconBgHex};padding:5px;`;
+  }
+  if (link.icon) {
+    const img = document.createElement('img');
+    img.src = `/api/icon/${link.icon}`;
+    img.alt = link.name;
+    img.className = 'w-full h-full object-contain';
+    img.onerror = () => img.replaceWith(mkPlaceholderIcon(FIXED.sub));
+    inner.appendChild(img);
+  } else {
+    inner.appendChild(mkPlaceholderIcon(FIXED.sub));
+  }
+  outer.appendChild(inner);
+
+  const dot = document.createElement('span');
+  dot.dataset.statusId = link.id;
+  dot.className = 'absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-white dark:ring-stone-800 bg-stone-300 dark:bg-stone-600';
+  outer.appendChild(dot);
+
+  return outer;
+}
+
+// ─── Status dots ──────────────────────────────────────────────────────────────
+
+function applyStatusDots() {
+  document.querySelectorAll('[data-status-id]').forEach(dot => {
+    const s = statusMap[dot.dataset.statusId];
+    dot.className = 'absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-white dark:ring-stone-800';
+    if      (s === 'up')   dot.className += ' bg-green-400';
+    else if (s === 'down') dot.className += ' bg-red-500';
+    else                   dot.className += ' bg-stone-300 dark:bg-stone-600';
+  });
+}
+
+async function pollStatus() {
+  try {
+    statusMap = await api('GET', '/api/status');
+    applyStatusDots();
+  } catch { /* best-effort */ }
+}
+
 // ─── Colour swatch picker ─────────────────────────────────────────────────────
 
 function mkSwatchPicker(selectedColor, colors, getSwatchClass, onSelect) {
@@ -594,7 +660,31 @@ document.getElementById('modalOverlay').addEventListener('click', e => {
 });
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') closeModal();
+  if (e.key === 'Escape') {
+    if (searchOpen) closeSearch(); else closeModal();
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+    e.preventDefault();
+    if (searchOpen) closeSearch(); else openSearch();
+    return;
+  }
+  if (e.key === '/' && !searchOpen) {
+    const tag = document.activeElement ? document.activeElement.tagName : '';
+    if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
+      e.preventDefault();
+      openSearch();
+      return;
+    }
+  }
+  if (searchOpen) {
+    if (e.key === 'ArrowDown') { e.preventDefault(); moveSearchSelection(1); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); moveSearchSelection(-1); }
+    else if (e.key === 'Enter') {
+      const items = document.querySelectorAll('#searchResults li[data-search-idx]');
+      if (selectedSearchIdx >= 0 && items[selectedSearchIdx]) items[selectedSearchIdx].click();
+    }
+  }
 });
 
 // ─── Group modal ──────────────────────────────────────────────────────────────
@@ -859,6 +949,48 @@ function openSettingsModal() {
     c => { selectedBase = c; }
   ));
 
+  // ── Import / Export ──────────────────────────────────────────────────────────
+  const ioSep = document.createElement('hr');
+  ioSep.className = 'my-5 border-stone-200 dark:border-stone-700';
+  wrap.appendChild(ioSep);
+
+  const ioTitle = document.createElement('p');
+  ioTitle.className = `text-xs font-semibold uppercase tracking-wider mb-3 ${b.sub}`;
+  ioTitle.textContent = 'Import / Export';
+  wrap.appendChild(ioTitle);
+
+  const ioRow = document.createElement('div');
+  ioRow.className = 'flex gap-3';
+
+  const exportBtn = document.createElement('button');
+  exportBtn.type = 'button';
+  exportBtn.textContent = '↓ Export JSON';
+  exportBtn.className = 'flex-1 px-3 py-2 rounded-lg text-sm font-medium border border-stone-300 dark:border-stone-600 text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-700 transition-colors';
+  exportBtn.addEventListener('click', exportConfig);
+  ioRow.appendChild(exportBtn);
+
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = '.json,application/json';
+  fileInput.className = 'hidden';
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files && fileInput.files[0]) importConfig(fileInput.files[0]);
+  });
+  ioRow.appendChild(fileInput);
+
+  const importBtn = document.createElement('button');
+  importBtn.type = 'button';
+  importBtn.textContent = '↑ Import JSON';
+  importBtn.className = 'flex-1 px-3 py-2 rounded-lg text-sm font-medium border border-stone-300 dark:border-stone-600 text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-700 transition-colors';
+  importBtn.addEventListener('click', () => fileInput.click());
+  ioRow.appendChild(importBtn);
+  wrap.appendChild(ioRow);
+
+  const ioNote = document.createElement('p');
+  ioNote.className = `text-xs mt-2 ${b.sub}`;
+  ioNote.textContent = 'Import replaces all groups and links. Export downloads the current config as JSON.';
+  wrap.appendChild(ioNote);
+
   const footer = document.createElement('div');
   footer.className = 'flex justify-end gap-2 mt-6';
   const cancelBtn = document.createElement('button');
@@ -883,6 +1015,131 @@ function openSettingsModal() {
 
   openModal(wrap);
   titleInput.focus();
+}
+
+// ─── Search overlay ───────────────────────────────────────────────────────────
+
+function openSearch() {
+  searchOpen = true;
+  selectedSearchIdx = -1;
+  document.getElementById('searchOverlay').classList.remove('hidden');
+  const input = document.getElementById('searchInput');
+  input.value = '';
+  renderSearchResults('');
+  requestAnimationFrame(() => input.focus());
+}
+
+function closeSearch() {
+  searchOpen = false;
+  document.getElementById('searchOverlay').classList.add('hidden');
+}
+
+function renderSearchResults(query) {
+  const list = document.getElementById('searchResults');
+  list.innerHTML = '';
+  selectedSearchIdx = -1;
+
+  const allLinks = (state.config?.groups || []).flatMap(g =>
+    g.links.map(l => ({ link: l, groupName: g.name }))
+  );
+
+  const q = query.toLowerCase().trim();
+  const matches = q
+    ? allLinks.filter(({ link: l }) =>
+        l.name.toLowerCase().includes(q) ||
+        (l.description || '').toLowerCase().includes(q) ||
+        l.url.toLowerCase().includes(q)
+      )
+    : allLinks.slice(0, 8);
+
+  if (matches.length === 0) {
+    const empty = document.createElement('li');
+    empty.className = 'px-4 py-6 text-sm text-center text-stone-400 dark:text-stone-500';
+    empty.textContent = 'No links match your search.';
+    list.appendChild(empty);
+    return;
+  }
+
+  matches.forEach(({ link, groupName }, idx) => {
+    const li = document.createElement('li');
+    li.role = 'option';
+    li.dataset.searchIdx = String(idx);
+    li.dataset.url = link.url;
+    li.className = 'flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors hover:bg-stone-100 dark:hover:bg-stone-700/50';
+
+    const wrap = mkIconWrap(link);
+    // Apply current status immediately
+    const dot = wrap.querySelector('[data-status-id]');
+    if (dot) {
+      const s = statusMap[link.id];
+      dot.className = 'absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-white dark:ring-stone-800';
+      if      (s === 'up')   dot.className += ' bg-green-400';
+      else if (s === 'down') dot.className += ' bg-red-500';
+      else                   dot.className += ' bg-stone-300 dark:bg-stone-600';
+    }
+    li.appendChild(wrap);
+
+    const textDiv = document.createElement('div');
+    textDiv.className = 'flex-1 min-w-0';
+    const nameEl = document.createElement('div');
+    nameEl.className = 'text-sm font-medium truncate text-stone-900 dark:text-stone-50';
+    nameEl.textContent = link.name;
+    textDiv.appendChild(nameEl);
+    const subEl = document.createElement('div');
+    subEl.className = 'text-xs truncate text-stone-500 dark:text-stone-400';
+    subEl.textContent = [groupName, link.description].filter(Boolean).join(' · ');
+    textDiv.appendChild(subEl);
+    li.appendChild(textDiv);
+
+    li.addEventListener('click', () => {
+      window.open(link.url, '_blank', 'noopener');
+      closeSearch();
+    });
+
+    list.appendChild(li);
+  });
+}
+
+function moveSearchSelection(delta) {
+  const items = Array.from(document.querySelectorAll('#searchResults li[data-search-idx]'));
+  if (!items.length) return;
+  // Deselect old
+  if (selectedSearchIdx >= 0 && selectedSearchIdx < items.length) {
+    items[selectedSearchIdx].classList.remove('bg-stone-100', 'dark:bg-stone-700/50');
+  }
+  selectedSearchIdx = Math.max(0, Math.min(items.length - 1, selectedSearchIdx + delta));
+  items[selectedSearchIdx].classList.add('bg-stone-100', 'dark:bg-stone-700/50');
+  items[selectedSearchIdx].scrollIntoView({ block: 'nearest' });
+}
+
+// ─── Config import / export ───────────────────────────────────────────────────
+
+async function exportConfig() {
+  try {
+    const res  = await fetch('/api/config/export');
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;
+    a.download = 'tailboard-config.json';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+  } catch (err) {
+    alert('Export failed: ' + err.message);
+  }
+}
+
+async function importConfig(file) {
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    await api('POST', '/api/config/import', data);
+    closeModal();
+    await reload();
+  } catch (err) {
+    alert('Import failed — make sure the file is a valid tailboard config JSON.\n\n' + err.message);
+  }
 }
 
 // ─── Form helpers ─────────────────────────────────────────────────────────────
@@ -917,6 +1174,15 @@ document.getElementById('editToggle').addEventListener('click', () => {
   render();
 });
 
+document.getElementById('searchOverlay').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeSearch();
+});
+
+document.getElementById('searchInput').addEventListener('input', e => {
+  renderSearchResults(e.target.value);
+});
+
+document.getElementById('searchBtn').addEventListener('click', openSearch);
 document.getElementById('settingsBtn').addEventListener('click', openSettingsModal);
 document.getElementById('dashTitle').addEventListener('click', openSettingsModal);
 
