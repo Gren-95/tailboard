@@ -2428,6 +2428,8 @@ function renderIframeCard(iframe) {
 async function fetchRss(feed) {
   const el = document.getElementById(`rss-${feed.id}`);
   if (!el) return;
+  const h = el.offsetHeight;
+  if (h) el.style.minHeight = h + 'px';
   el.innerHTML = '';
   el.appendChild(mkCardSpinner());
   try {
@@ -2436,6 +2438,8 @@ async function fetchRss(feed) {
     renderRssItems(feed, await res.json());
   } catch (err) {
     el.innerHTML = `<p class="px-0 py-1 text-xs text-red-400">${err.message}</p>`;
+  } finally {
+    el.style.minHeight = '';
   }
 }
 
@@ -2823,6 +2827,8 @@ async function fetchIcal(cal) {
   if (!body) return;
   const cached = icalDataCache.get(cal.id);
   if (cached) { renderIcalEvents(body, cached.events, cal.maxItems); return; }
+  const h = body.offsetHeight;
+  if (h) body.style.minHeight = h + 'px';
   body.innerHTML = '';
   body.appendChild(mkCardSpinner());
   try {
@@ -2830,6 +2836,7 @@ async function fetchIcal(cal) {
     icalDataCache.set(cal.id, data);
     renderIcalEvents(body, data.events, cal.maxItems);
   } catch { body.textContent = 'Failed to load.'; }
+  finally { body.style.minHeight = ''; }
 }
 
 function renderIcalEvents(body, events, maxItems) {
