@@ -68,6 +68,7 @@ volumes:
 | Key                  | Action                          |
 |----------------------|---------------------------------|
 | `Ctrl+K` / `⌘K` / `/` | Open search                   |
+| `Ctrl+E` / `⌘E`      | Toggle edit mode                |
 | `Esc`                | Close modal / search / menu     |
 | `Ctrl+=` / `⌘=`      | Zoom in                         |
 | `Ctrl+-` / `⌘-`      | Zoom out                        |

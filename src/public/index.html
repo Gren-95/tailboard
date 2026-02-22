@@ -1435,6 +1435,15 @@ document.addEventListener('keydown', e => {
     if (searchOpen) closeSearch(); else openSearch();
     return;
   }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'e') {
+    const tag = document.activeElement ? document.activeElement.tagName : '';
+    if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
+      e.preventDefault();
+      state.editMode = !state.editMode;
+      render();
+      return;
+    }
+  }
   if ((e.ctrlKey || e.metaKey) && (e.key === '=' || e.key === '+')) {
     e.preventDefault();
     const idx = ZOOM_LEVELS.indexOf(currentZoom);
@@ -3089,6 +3098,7 @@ function openKeybindsModal() {
   const navShortcuts = [
     { keys: ['⌃K', '⌘K'], desc: 'Open search' },
     { keys: ['/'],         desc: 'Open search' },
+    { keys: ['⌃E', '⌘E'], desc: 'Toggle edit mode' },
     { keys: ['Esc'],       desc: 'Close modal / search / menu' },
     { keys: ['⌃=', '⌘='], desc: 'Zoom in' },
     { keys: ['⌃−', '⌘−'], desc: 'Zoom out' },
