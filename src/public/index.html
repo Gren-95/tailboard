@@ -217,7 +217,7 @@ const WIDGET = {
 <!-- Modal overlay -->
 <div id="modalOverlay" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
   <div id="modalBox" class="relative w-full max-w-md rounded-2xl shadow-2xl overflow-hidden">
-    <div id="modalContent" class="p-6"></div>
+    <div id="modalContent" class="p-6 overflow-y-auto max-h-[85vh]"></div>
   </div>
 </div>
 
@@ -1188,10 +1188,10 @@ function mkSwatchPicker(selectedColor, colors, getSwatchClass, onSelect) {
 
 // ─── Modal system ─────────────────────────────────────────────────────────────
 
-function openModal(contentEl) {
+function openModal(contentEl, maxWidth = 'max-w-md') {
   const b = FIXED;
   const box = document.getElementById('modalBox');
-  box.className = `relative w-full max-w-md rounded-2xl shadow-2xl overflow-hidden ${b.card.split(' ').slice(0, 2).join(' ')}`;
+  box.className = `relative w-full ${maxWidth} rounded-2xl shadow-2xl overflow-hidden ${b.card.split(' ').slice(0, 2).join(' ')}`;
   document.getElementById('modalContent').innerHTML = '';
   document.getElementById('modalContent').appendChild(contentEl);
   document.getElementById('modalOverlay').classList.remove('hidden');
@@ -1600,55 +1600,69 @@ function openSettingsModal() {
   const cfg = state.config;
   const b = FIXED;
   let selectedBase = cfg.basePalette;
+  let selectedPingInterval = cfg.pingInterval ?? 60;
+  let bgType  = (cfg.background && cfg.background.type)  || 'none';
+  let bgValue = (cfg.background && cfg.background.value) || '';
+
   const wrap = document.createElement('div');
 
-  const title = document.createElement('h2');
-  title.className = `text-lg font-semibold mb-4 ${b.text}`;
-  title.textContent = 'Dashboard settings';
-  wrap.appendChild(title);
+  // ── Header ───────────────────────────────────────────────────────────────────
+  const titleEl = document.createElement('h2');
+  titleEl.className = `text-base font-semibold mb-3 ${b.text}`;
+  titleEl.textContent = 'Settings';
+  wrap.appendChild(titleEl);
 
-  wrap.appendChild(mkLabel('Dashboard title', b.sub));
+  // ── Tab strip ────────────────────────────────────────────────────────────────
+  const TABS = ['General', 'Background', 'Appearance', 'Data'];
+  const panels = {};
+  const tabStrip = document.createElement('div');
+  tabStrip.className = 'flex border-b border-stone-200 dark:border-stone-700 mb-5 -mx-6 px-6';
+
+  const switchTab = name => {
+    tabStrip.querySelectorAll('[data-tab]').forEach(btn => {
+      const on = btn.dataset.tab === name;
+      btn.className = `px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap ${
+        on ? `border-indigo-500 ${b.text}` : `border-transparent ${b.sub} hover:border-stone-400`
+      }`;
+    });
+    Object.entries(panels).forEach(([n, p]) => p.classList.toggle('hidden', n !== name));
+  };
+
+  TABS.forEach(name => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = name;
+    btn.dataset.tab = name;
+    btn.addEventListener('click', () => switchTab(name));
+    tabStrip.appendChild(btn);
+  });
+  wrap.appendChild(tabStrip);
+
+  // ── GENERAL panel ────────────────────────────────────────────────────────────
+  const genPanel = document.createElement('div');
+
+  genPanel.appendChild(mkLabel('Dashboard title', b.sub));
   const titleInput = mkInput(cfg.title || '', 'My Dashboard', b);
-  wrap.appendChild(titleInput);
+  genPanel.appendChild(titleInput);
 
-  const bpLabel = mkLabel('Base palette', b.sub);
+  const bpLabel = mkLabel('Colour palette', b.sub);
   bpLabel.className += ' mt-4 block';
-  wrap.appendChild(bpLabel);
+  genPanel.appendChild(bpLabel);
   const bpHint = document.createElement('p');
   bpHint.className = `text-xs mb-2 ${b.sub}`;
-  bpHint.textContent = 'Colours the top bar. Page and cards are always stone.';
-  wrap.appendChild(bpHint);
-  wrap.appendChild(mkSwatchPicker(
-    selectedBase, PALETTES,
-    c => ACCENT[c].swatch,
-    c => { selectedBase = c; }
-  ));
+  bpHint.textContent = 'Colours the top bar. Cards are always stone.';
+  genPanel.appendChild(bpHint);
+  genPanel.appendChild(mkSwatchPicker(selectedBase, PALETTES, c => ACCENT[c].swatch, c => { selectedBase = c; }));
 
-  // ── Ping interval ─────────────────────────────────────────────────────────────
-  const piSep = document.createElement('hr');
-  piSep.className = 'my-5 border-stone-200 dark:border-stone-700';
-  wrap.appendChild(piSep);
-
-  const piTitle = document.createElement('p');
-  piTitle.className = `text-xs font-semibold uppercase tracking-wider mb-3 ${b.sub}`;
-  piTitle.textContent = 'Service Status';
-  wrap.appendChild(piTitle);
-
-  wrap.appendChild(mkLabel('Ping interval', b.sub));
-
-  let selectedPingInterval = cfg.pingInterval ?? 60;
-  const piOptions = [
-    { value: 30,  label: '30s' },
-    { value: 60,  label: '1m'  },
-    { value: 300, label: '5m'  },
-    { value: 0,   label: 'Off' },
-  ];
+  const piLabel = mkLabel('Ping interval', b.sub);
+  piLabel.className += ' mt-4 block';
+  genPanel.appendChild(piLabel);
   const piRow = document.createElement('div');
   piRow.className = 'flex gap-2 mt-1';
-  const piBase = `px-3 py-1.5 rounded-lg text-sm border transition-colors`;
-  const piActive = `bg-indigo-600 text-white border-indigo-600`;
-  const piIdle = `border-stone-300 dark:border-stone-600 ${b.text} hover:bg-stone-100 dark:hover:bg-stone-700`;
-  piOptions.forEach(opt => {
+  const piBase   = 'px-3 py-1.5 rounded-lg text-sm border transition-colors';
+  const piActive = 'bg-indigo-600 text-white border-indigo-600';
+  const piIdle   = `border-stone-300 dark:border-stone-600 ${b.text} hover:bg-stone-100 dark:hover:bg-stone-700`;
+  [{ value: 30, label: '30s' }, { value: 60, label: '1m' }, { value: 300, label: '5m' }, { value: 0, label: 'Off' }].forEach(opt => {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.textContent = opt.label;
@@ -1662,20 +1676,11 @@ function openSettingsModal() {
     });
     piRow.appendChild(btn);
   });
-  wrap.appendChild(piRow);
+  genPanel.appendChild(piRow);
+  panels['General'] = genPanel;
 
-  // ── Background ────────────────────────────────────────────────────────────────
-  const bgSep = document.createElement('hr');
-  bgSep.className = 'my-5 border-stone-200 dark:border-stone-700';
-  wrap.appendChild(bgSep);
-
-  const bgTitle = document.createElement('p');
-  bgTitle.className = `text-xs font-semibold uppercase tracking-wider mb-3 ${b.sub}`;
-  bgTitle.textContent = 'Background';
-  wrap.appendChild(bgTitle);
-
-  let bgType  = (cfg.background && cfg.background.type)  || 'none';
-  let bgValue = (cfg.background && cfg.background.value) || '';
+  // ── BACKGROUND panel ─────────────────────────────────────────────────────────
+  const bgPanel = document.createElement('div');
 
   const bgTypeRow = document.createElement('div');
   bgTypeRow.className = 'flex gap-2 mb-3';
@@ -1683,92 +1688,54 @@ function openSettingsModal() {
   const bgTypePillActive = 'bg-indigo-600 text-white border-indigo-600';
   const bgTypePillIdle   = `border-stone-300 dark:border-stone-600 ${b.text} hover:bg-stone-100 dark:hover:bg-stone-700`;
 
-  // Gradient sub-section
   const bgGradientSection = document.createElement('div');
   bgGradientSection.className = bgType === 'gradient' ? 'mb-2' : 'hidden mb-2';
-
   const gradParts = bgValue.includes(',') ? bgValue.split(',') : ['#0f172a', '#1e293b'];
   let gradC1 = gradParts[0] || '#0f172a';
   let gradC2 = gradParts[1] || '#1e293b';
 
-  const gradPresets = [
-    { label: 'Midnight', value: '#0f172a,#1e293b' },
-    { label: 'Forest',   value: '#052e16,#14532d' },
-    { label: 'Ember',    value: '#1c0a00,#431407' },
-    { label: 'Space',    value: '#09090b,#18181b' },
-  ];
   const presetRow = document.createElement('div');
   presetRow.className = 'flex gap-2 flex-wrap mb-3';
-
-  let c1Input, c2Input; // declared here so preset handler can reference them
-
-  gradPresets.forEach(preset => {
+  let c1Input, c2Input;
+  [{ label: 'Midnight', value: '#0f172a,#1e293b' }, { label: 'Forest', value: '#052e16,#14532d' }, { label: 'Ember', value: '#1c0a00,#431407' }, { label: 'Space', value: '#09090b,#18181b' }].forEach(preset => {
     const [p1, p2] = preset.value.split(',');
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.textContent = preset.label;
     btn.className = 'px-2.5 py-1 text-xs rounded-lg text-white font-medium border-0 transition-opacity hover:opacity-90';
     btn.style.background = `linear-gradient(135deg,${p1},${p2})`;
-    btn.addEventListener('click', () => {
-      gradC1 = p1; gradC2 = p2;
-      bgValue = preset.value;
-      if (c1Input) c1Input.value = gradC1;
-      if (c2Input) c2Input.value = gradC2;
-    });
+    btn.addEventListener('click', () => { gradC1 = p1; gradC2 = p2; bgValue = preset.value; if (c1Input) c1Input.value = gradC1; if (c2Input) c2Input.value = gradC2; });
     presetRow.appendChild(btn);
   });
   bgGradientSection.appendChild(presetRow);
 
   const colorPickerRow = document.createElement('div');
   colorPickerRow.className = 'flex items-center gap-3';
-
-  const c1Label = document.createElement('label');
-  c1Label.className = `text-xs ${b.sub}`;
-  c1Label.textContent = 'Color 1';
-  c1Input = document.createElement('input');
-  c1Input.type = 'color';
-  c1Input.value = gradC1;
+  const c1Label = document.createElement('label'); c1Label.className = `text-xs ${b.sub}`; c1Label.textContent = 'Color 1';
+  c1Input = document.createElement('input'); c1Input.type = 'color'; c1Input.value = gradC1;
   c1Input.className = 'w-8 h-8 rounded cursor-pointer border border-stone-300 dark:border-stone-600';
   c1Input.addEventListener('input', () => { gradC1 = c1Input.value; bgValue = `${gradC1},${gradC2}`; });
-
-  const c2Label = document.createElement('label');
-  c2Label.className = `text-xs ${b.sub}`;
-  c2Label.textContent = 'Color 2';
-  c2Input = document.createElement('input');
-  c2Input.type = 'color';
-  c2Input.value = gradC2;
+  const c2Label = document.createElement('label'); c2Label.className = `text-xs ${b.sub}`; c2Label.textContent = 'Color 2';
+  c2Input = document.createElement('input'); c2Input.type = 'color'; c2Input.value = gradC2;
   c2Input.className = 'w-8 h-8 rounded cursor-pointer border border-stone-300 dark:border-stone-600';
   c2Input.addEventListener('input', () => { gradC2 = c2Input.value; bgValue = `${gradC1},${gradC2}`; });
-
-  colorPickerRow.appendChild(c1Label);
-  colorPickerRow.appendChild(c1Input);
-  colorPickerRow.appendChild(c2Label);
-  colorPickerRow.appendChild(c2Input);
+  colorPickerRow.appendChild(c1Label); colorPickerRow.appendChild(c1Input);
+  colorPickerRow.appendChild(c2Label); colorPickerRow.appendChild(c2Input);
   bgGradientSection.appendChild(colorPickerRow);
 
-  // Image sub-section
   const bgImageSection = document.createElement('div');
   bgImageSection.className = bgType === 'image' ? 'mb-2' : 'hidden mb-2';
   const bgImageInput = mkInput(bgType === 'image' ? bgValue : '', 'https://example.com/background.jpg', b);
   bgImageInput.addEventListener('input', () => { bgValue = bgImageInput.value.trim(); });
   bgImageSection.appendChild(bgImageInput);
 
-  // Type pills (built after sub-sections so toggle handler can reference them)
-  [
-    { value: 'none',     label: 'None'      },
-    { value: 'gradient', label: 'Gradient'  },
-    { value: 'image',    label: 'Image URL' },
-  ].forEach(opt => {
+  [{ value: 'none', label: 'None' }, { value: 'gradient', label: 'Gradient' }, { value: 'image', label: 'Image URL' }].forEach(opt => {
     const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.textContent = opt.label;
-    btn.dataset.bgType = opt.value;
+    btn.type = 'button'; btn.textContent = opt.label; btn.dataset.bgType = opt.value;
     btn.className = `${bgTypePillBase} ${opt.value === bgType ? bgTypePillActive : bgTypePillIdle}`;
     btn.addEventListener('click', () => {
       bgType = opt.value;
-      bgTypeRow.querySelectorAll('button').forEach(b2 => {
-        b2.className = `${bgTypePillBase} ${b2.dataset.bgType === bgType ? bgTypePillActive : bgTypePillIdle}`;
-      });
+      bgTypeRow.querySelectorAll('button').forEach(b2 => { b2.className = `${bgTypePillBase} ${b2.dataset.bgType === bgType ? bgTypePillActive : bgTypePillIdle}`; });
       bgGradientSection.className = bgType === 'gradient' ? 'mb-2' : 'hidden mb-2';
       bgImageSection.className    = bgType === 'image'    ? 'mb-2' : 'hidden mb-2';
       if (bgType === 'gradient') bgValue = `${gradC1},${gradC2}`;
@@ -1777,181 +1744,115 @@ function openSettingsModal() {
     });
     bgTypeRow.appendChild(btn);
   });
+  bgPanel.appendChild(bgTypeRow);
+  bgPanel.appendChild(bgGradientSection);
+  bgPanel.appendChild(bgImageSection);
+  panels['Background'] = bgPanel;
 
-  wrap.appendChild(bgTypeRow);
-  wrap.appendChild(bgGradientSection);
-  wrap.appendChild(bgImageSection);
+  // ── APPEARANCE panel ─────────────────────────────────────────────────────────
+  const appPanel = document.createElement('div');
 
-  // ── Favicon ──────────────────────────────────────────────────────────────────
-  const favSep = document.createElement('hr');
-  favSep.className = 'my-5 border-stone-200 dark:border-stone-700';
-  wrap.appendChild(favSep);
+  const sharpRow = document.createElement('label');
+  sharpRow.className = 'flex items-center justify-between cursor-pointer mb-5';
+  const sharpLabel = document.createElement('div');
+  const sharpTitle = document.createElement('span'); sharpTitle.className = `text-sm font-medium ${b.text}`; sharpTitle.textContent = 'Sharp corners';
+  const sharpDesc = document.createElement('p'); sharpDesc.className = `text-xs ${b.sub}`; sharpDesc.textContent = 'Removes all border-radius from the UI';
+  sharpLabel.appendChild(sharpTitle); sharpLabel.appendChild(sharpDesc);
+  const sharpToggle = document.createElement('input'); sharpToggle.type = 'checkbox'; sharpToggle.checked = !!cfg.sharpCorners;
+  sharpToggle.className = 'w-4 h-4 accent-indigo-600 flex-shrink-0';
+  sharpRow.appendChild(sharpLabel); sharpRow.appendChild(sharpToggle);
+  appPanel.appendChild(sharpRow);
+
+  const cssLabel = mkLabel('Custom CSS', b.sub);
+  appPanel.appendChild(cssLabel);
+  const cssHint = document.createElement('p'); cssHint.className = `text-xs mb-2 ${b.sub}`; cssHint.textContent = 'Injected into <style> on every page load.';
+  appPanel.appendChild(cssHint);
+  const cssArea = document.createElement('textarea');
+  cssArea.value = cfg.customCss || '';
+  cssArea.placeholder = '/* e.g. body { font-family: monospace; } */';
+  cssArea.rows = 7; cssArea.autocomplete = 'off';
+  cssArea.className = `w-full px-3 py-2 rounded-lg text-xs border font-mono ${b.card} ${b.text} focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all resize-y`;
+  appPanel.appendChild(cssArea);
+  panels['Appearance'] = appPanel;
+
+  // ── DATA panel ───────────────────────────────────────────────────────────────
+  const dataPanel = document.createElement('div');
 
   const favTitle = document.createElement('p');
   favTitle.className = `text-xs font-semibold uppercase tracking-wider mb-3 ${b.sub}`;
   favTitle.textContent = 'Favicon';
-  wrap.appendChild(favTitle);
+  dataPanel.appendChild(favTitle);
 
   const favRow = document.createElement('div');
-  favRow.className = 'flex items-center gap-3';
-
+  favRow.className = 'flex items-center gap-3 mb-6';
   const favPreview = document.createElement('img');
   favPreview.src = '/api/favicon?t=' + Date.now();
   favPreview.className = 'w-10 h-10 object-contain rounded border border-stone-200 dark:border-stone-700 flex-shrink-0';
   favPreview.onerror = () => { favPreview.style.opacity = '0'; };
   favRow.appendChild(favPreview);
-
-  const favFileInput = document.createElement('input');
-  favFileInput.type = 'file';
-  favFileInput.accept = 'image/*';
-  favFileInput.className = 'hidden';
+  const favFileInput = document.createElement('input'); favFileInput.type = 'file'; favFileInput.accept = 'image/*'; favFileInput.className = 'hidden';
   favFileInput.addEventListener('change', async () => {
-    const file = favFileInput.files && favFileInput.files[0];
-    if (!file) return;
+    const file = favFileInput.files && favFileInput.files[0]; if (!file) return;
     try {
-      const res = await fetch('/api/favicon', {
-        method: 'POST',
-        headers: { 'Content-Type': file.type },
-        body: file,
-      });
+      const res = await fetch('/api/favicon', { method: 'POST', headers: { 'Content-Type': file.type }, body: file });
       if (!res.ok) throw new Error(`Server returned ${res.status}`);
-      favPreview.style.opacity = '1';
-      favPreview.src = '/api/favicon?t=' + Date.now();
-      refreshFavicon();
-      showToast('Favicon updated');
-    } catch (err) {
-      showToast('Upload failed — ' + err.message, 'error');
-    }
+      favPreview.style.opacity = '1'; favPreview.src = '/api/favicon?t=' + Date.now(); refreshFavicon(); showToast('Favicon updated');
+    } catch (err) { showToast('Upload failed — ' + err.message, 'error'); }
     favFileInput.value = '';
   });
   favRow.appendChild(favFileInput);
-
-  const uploadFavBtn = document.createElement('button');
-  uploadFavBtn.type = 'button';
-  uploadFavBtn.textContent = '↑ Upload';
+  const uploadFavBtn = document.createElement('button'); uploadFavBtn.type = 'button'; uploadFavBtn.textContent = '↑ Upload';
   uploadFavBtn.className = 'px-3 py-2 rounded-lg text-sm font-medium border border-stone-300 dark:border-stone-600 text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-700 transition-colors';
   uploadFavBtn.addEventListener('click', () => favFileInput.click());
   favRow.appendChild(uploadFavBtn);
-
-  const removeFavBtn = document.createElement('button');
-  removeFavBtn.type = 'button';
-  removeFavBtn.textContent = '✕ Remove';
+  const removeFavBtn = document.createElement('button'); removeFavBtn.type = 'button'; removeFavBtn.textContent = '✕ Remove';
   removeFavBtn.className = 'px-3 py-2 rounded-lg text-sm font-medium border border-red-200 dark:border-red-800/60 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors';
   removeFavBtn.addEventListener('click', async () => {
     try {
-      const res = await fetch('/api/favicon', { method: 'DELETE' });
-      if (!res.ok) throw new Error(`Server returned ${res.status}`);
-      favPreview.style.opacity = '0';
-      refreshFavicon();
-      showToast('Favicon removed');
-    } catch (err) {
-      showToast('Remove failed — ' + err.message, 'error');
-    }
+      const res = await fetch('/api/favicon', { method: 'DELETE' }); if (!res.ok) throw new Error(`Server returned ${res.status}`);
+      favPreview.style.opacity = '0'; refreshFavicon(); showToast('Favicon removed');
+    } catch (err) { showToast('Remove failed — ' + err.message, 'error'); }
   });
   favRow.appendChild(removeFavBtn);
-  wrap.appendChild(favRow);
-
-  // ── Import / Export ──────────────────────────────────────────────────────────
-  const ioSep = document.createElement('hr');
-  ioSep.className = 'my-5 border-stone-200 dark:border-stone-700';
-  wrap.appendChild(ioSep);
+  dataPanel.appendChild(favRow);
 
   const ioTitle = document.createElement('p');
   ioTitle.className = `text-xs font-semibold uppercase tracking-wider mb-3 ${b.sub}`;
   ioTitle.textContent = 'Import / Export';
-  wrap.appendChild(ioTitle);
-
-  const ioRow = document.createElement('div');
-  ioRow.className = 'flex gap-3';
-
-  const exportBtn = document.createElement('button');
-  exportBtn.type = 'button';
-  exportBtn.textContent = '↓ Export JSON';
+  dataPanel.appendChild(ioTitle);
+  const ioRow = document.createElement('div'); ioRow.className = 'flex gap-3';
+  const exportBtn = document.createElement('button'); exportBtn.type = 'button'; exportBtn.textContent = '↓ Export JSON';
   exportBtn.className = 'flex-1 px-3 py-2 rounded-lg text-sm font-medium border border-stone-300 dark:border-stone-600 text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-700 transition-colors';
   exportBtn.addEventListener('click', exportConfig);
   ioRow.appendChild(exportBtn);
-
-  const fileInput = document.createElement('input');
-  fileInput.type = 'file';
-  fileInput.accept = '.json,application/json';
-  fileInput.className = 'hidden';
-  fileInput.addEventListener('change', () => {
-    if (fileInput.files && fileInput.files[0]) importConfig(fileInput.files[0]);
-  });
+  const fileInput = document.createElement('input'); fileInput.type = 'file'; fileInput.accept = '.json,application/json'; fileInput.className = 'hidden';
+  fileInput.addEventListener('change', () => { if (fileInput.files && fileInput.files[0]) importConfig(fileInput.files[0]); });
   ioRow.appendChild(fileInput);
-
-  const importBtn = document.createElement('button');
-  importBtn.type = 'button';
-  importBtn.textContent = '↑ Import JSON';
+  const importBtn = document.createElement('button'); importBtn.type = 'button'; importBtn.textContent = '↑ Import JSON';
   importBtn.className = 'flex-1 px-3 py-2 rounded-lg text-sm font-medium border border-stone-300 dark:border-stone-600 text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-700 transition-colors';
   importBtn.addEventListener('click', () => fileInput.click());
   ioRow.appendChild(importBtn);
-  wrap.appendChild(ioRow);
+  dataPanel.appendChild(ioRow);
+  const ioNote = document.createElement('p'); ioNote.className = `text-xs mt-2 ${b.sub}`; ioNote.textContent = 'Import replaces all groups and links.';
+  dataPanel.appendChild(ioNote);
+  panels['Data'] = dataPanel;
 
-  const ioNote = document.createElement('p');
-  ioNote.className = `text-xs mt-2 ${b.sub}`;
-  ioNote.textContent = 'Import replaces all groups and links. Export downloads the current config as JSON.';
-  wrap.appendChild(ioNote);
+  // Append panels and activate first tab
+  Object.values(panels).forEach(p => wrap.appendChild(p));
+  switchTab('General');
 
-  // ── Appearance ────────────────────────────────────────────────────────────────
-  const appSep = document.createElement('hr');
-  appSep.className = 'my-5 border-stone-200 dark:border-stone-700';
-  wrap.appendChild(appSep);
-  const appTitle = document.createElement('p');
-  appTitle.className = `text-xs font-semibold uppercase tracking-wider mb-3 ${b.sub}`;
-  appTitle.textContent = 'Appearance';
-  wrap.appendChild(appTitle);
-
-  const sharpRow = document.createElement('label');
-  sharpRow.className = 'flex items-center justify-between cursor-pointer';
-  const sharpLabel = document.createElement('span');
-  sharpLabel.className = `text-sm ${b.text}`;
-  sharpLabel.textContent = 'Sharp corners';
-  const sharpToggle = document.createElement('input');
-  sharpToggle.type = 'checkbox';
-  sharpToggle.checked = !!cfg.sharpCorners;
-  sharpToggle.className = 'w-4 h-4 accent-indigo-600';
-  sharpRow.appendChild(sharpLabel);
-  sharpRow.appendChild(sharpToggle);
-  wrap.appendChild(sharpRow);
-
-  // ── Advanced ──────────────────────────────────────────────────────────────────
-  const advSep = document.createElement('hr');
-  advSep.className = 'my-5 border-stone-200 dark:border-stone-700';
-  wrap.appendChild(advSep);
-  const advTitle = document.createElement('p');
-  advTitle.className = `text-xs font-semibold uppercase tracking-wider mb-1 ${b.sub}`;
-  advTitle.textContent = 'Custom CSS';
-  wrap.appendChild(advTitle);
-  const advHint = document.createElement('p');
-  advHint.className = `text-xs mb-2 ${b.sub}`;
-  advHint.textContent = 'Injected into <style> on every page load.';
-  wrap.appendChild(advHint);
-  const cssArea = document.createElement('textarea');
-  cssArea.value = cfg.customCss || '';
-  cssArea.placeholder = '/* e.g. body { font-family: monospace; } */';
-  cssArea.rows = 5;
-  cssArea.autocomplete = 'off';
-  cssArea.className = `w-full px-3 py-2 rounded-lg text-xs border font-mono ${b.card} ${b.text} focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all resize-y`;
-  wrap.appendChild(cssArea);
-
+  // ── Footer ───────────────────────────────────────────────────────────────────
   const footer = document.createElement('div');
-  footer.className = 'flex justify-end gap-2 mt-6';
-  const cancelBtn = document.createElement('button');
-  cancelBtn.type = 'button';
-  cancelBtn.textContent = 'Cancel';
+  footer.className = 'flex justify-end gap-2 mt-6 pt-4 border-t border-stone-200 dark:border-stone-700';
+  const cancelBtn = document.createElement('button'); cancelBtn.type = 'button'; cancelBtn.textContent = 'Cancel';
   cancelBtn.className = `px-4 py-2 rounded-lg text-sm font-medium border ${b.text} opacity-60 hover:opacity-100 transition-opacity`;
   cancelBtn.onclick = closeModal;
   footer.appendChild(cancelBtn);
-
-  const saveBtn = document.createElement('button');
-  saveBtn.type = 'button';
-  saveBtn.textContent = 'Save';
+  const saveBtn = document.createElement('button'); saveBtn.type = 'button'; saveBtn.textContent = 'Save';
   saveBtn.className = 'px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-500 transition-colors';
   saveBtn.onclick = async () => {
-    const newTitle = titleInput.value.trim() || 'My Dashboard';
     await api('PUT', '/api/config', {
-      title: newTitle,
+      title: titleInput.value.trim() || 'My Dashboard',
       basePalette: selectedBase,
       pingInterval: selectedPingInterval,
       background: { type: bgType, value: bgValue },
@@ -1964,7 +1865,7 @@ function openSettingsModal() {
   footer.appendChild(saveBtn);
   wrap.appendChild(footer);
 
-  openModal(wrap);
+  openModal(wrap, 'max-w-lg');
   titleInput.focus();
 }
 
@@ -2213,7 +2114,7 @@ function openAddWidgetModal() {
   choices.forEach(({ icon, label, desc, fn }) => {
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = `flex flex-col items-start gap-1 p-4 rounded-xl border-2 border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-900 hover:border-indigo-500 dark:hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all text-left`;
+    btn.className = `flex flex-col items-start gap-1 p-4 rounded-xl border-2 border-stone-200 dark:border-stone-600 bg-stone-50 dark:bg-stone-700 hover:border-indigo-500 dark:hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-all text-left`;
     btn.title = desc;
     btn.innerHTML = `<span class="mb-1 opacity-70">${icon}</span><span class="font-semibold text-sm ${b.text}">${label}</span><span class="text-xs ${b.sub}">${desc}</span>`;
     btn.onclick = () => { closeModal(); fn(); };
