@@ -159,8 +159,9 @@ const DEFAULT_CONFIG = {
   countdowns: [],
   calendars:  [],
   groups:     [],
-  widgetOrder: [],
-  colSpan:     {},
+  widgetOrder:   [],
+  widgetColumns: [],   // 2-D: array of columns, each column is an array of widget IDs
+  colSpan:       {},
 };
 
 function loadConfig() {
@@ -341,7 +342,8 @@ app.post('/api/config/import', (req, res) => {
     countdowns: Array.isArray(body.countdowns) ? body.countdowns : current.countdowns,
     calendars:  Array.isArray(body.calendars)  ? body.calendars  : current.calendars,
     groups:       body.groups,
-    widgetOrder: Array.isArray(body.widgetOrder) ? body.widgetOrder : current.widgetOrder,
+    widgetOrder:   Array.isArray(body.widgetOrder)   ? body.widgetOrder   : current.widgetOrder,
+    widgetColumns: Array.isArray(body.widgetColumns) ? body.widgetColumns : current.widgetColumns,
     colSpan:     (body.colSpan && typeof body.colSpan === 'object' && !Array.isArray(body.colSpan)) ? body.colSpan : current.colSpan,
   };
   saveConfig(merged);
@@ -919,6 +921,15 @@ app.put('/api/widgetOrder', (req, res) => {
   if (colSpan && typeof colSpan === 'object' && !Array.isArray(colSpan)) {
     cfg.colSpan = { ...(cfg.colSpan || {}), ...colSpan };
   }
+  saveConfig(cfg);
+  res.json({ ok: true });
+});
+
+app.put('/api/widgetColumns', (req, res) => {
+  const cfg = loadConfig();
+  const { columns } = req.body;
+  if (!Array.isArray(columns)) return res.status(400).json({ error: 'columns must be an array' });
+  cfg.widgetColumns = columns;
   saveConfig(cfg);
   res.json({ ok: true });
 });

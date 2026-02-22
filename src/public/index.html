@@ -385,6 +385,79 @@ function clearWidgetIndicators() {
   });
 }
 
+// Clear column-level DND indicators
+function clearColumnIndicators() {
+  document.querySelectorAll('[data-col-idx]').forEach(el => {
+    el.style.boxShadow = '';
+    el.style.outline   = '';
+    delete el.dataset.colDropPos;
+  });
+}
+
+// Build 2-D column layout from config.
+// Uses stored widgetColumns if present; otherwise distributes round-robin into 4 columns.
+// Always reconciles against the canonical widget ID list so stale IDs are dropped and
+// new ones (just created) are placed in addingToColIdx.
+let addingToColIdx = 0;
+function buildWidgetColumns(cfg) {
+  const allIds = buildWidgetOrder(cfg);
+  const allIdsSet = new Set(allIds);
+
+  let cols = (cfg.widgetColumns || []).length > 0
+    ? (cfg.widgetColumns || []).map(c => c.filter(id => allIdsSet.has(id)))
+    : null;
+
+  if (!cols) {
+    // Initial layout: distribute round-robin across 4 columns
+    cols = [[], [], [], []];
+    allIds.forEach((id, i) => cols[i % 4].push(id));
+    return cols;
+  }
+
+  // Place any new IDs (not yet in any column) into addingToColIdx
+  const storedIds = new Set(cols.flat());
+  allIds.filter(id => !storedIds.has(id)).forEach(id => {
+    const t = Math.max(0, Math.min(addingToColIdx, cols.length - 1));
+    cols[t].push(id);
+  });
+
+  return cols;
+}
+
+// Move widget fromId into toColIdx before/after toId (or append when toId is null)
+function moveWidget(cols, fromId, toColIdx, toId, pos) {
+  const newCols = cols.map(c => c.filter(id => id !== fromId));
+  const col = newCols[toColIdx];
+  if (toId === null) {
+    col.push(fromId);
+  } else {
+    const idx = col.indexOf(toId);
+    col.splice(idx === -1 ? col.length : pos === 'top' ? idx : idx + 1, 0, fromId);
+  }
+  return newCols;
+}
+
+// Move column fromIdx to left/right of toIdx
+function moveColumn(cols, fromIdx, toIdx, pos) {
+  if (fromIdx === toIdx) return cols;
+  const n = [...cols];
+  const [removed] = n.splice(fromIdx, 1);
+  // toIdx references the original array; after splice, positions shift
+  const target = cols[toIdx];
+  let at = n.indexOf(target);
+  if (at === -1) at = n.length;
+  if (pos === 'right') at++;
+  n.splice(Math.max(0, Math.min(at, n.length)), 0, removed);
+  return n;
+}
+
+// Persist column layout: update state optimistically + save to server
+async function saveColumns(newCols) {
+  state.config.widgetColumns = newCols;
+  render();
+  await api('PUT', '/api/widgetColumns', { columns: newCols });
+}
+
 // Attach widget drag-and-drop drop-target handlers to a card (edit mode only)
 function attachWidgetDnd(card, widgetId) {
   card.addEventListener('dragover', e => {
@@ -406,13 +479,15 @@ function attachWidgetDnd(card, widgetId) {
 
   card.addEventListener('drop', async e => {
     e.preventDefault();
+    e.stopPropagation(); // don't bubble to column drop handler
     if (dnd.type !== 'widget' || dnd.id === widgetId) return;
     const pos = card.dataset.dropPos || 'bottom';
     clearWidgetIndicators();
-    const newOrder = reorder(buildWidgetOrder(state.config), dnd.id, widgetId, pos);
+    const colEl = card.closest('[data-col-idx]');
+    const toColIdx = colEl ? parseInt(colEl.dataset.colIdx) : 0;
+    const newCols = moveWidget(buildWidgetColumns(state.config), dnd.id, toColIdx, widgetId, pos);
     dnd = { type: null };
-    await api('PUT', '/api/widgetOrder', { order: newOrder });
-    await reload();
+    await saveColumns(newCols);
   });
 }
 
@@ -464,38 +539,170 @@ function render() {
 
   const container = document.getElementById('groupsContainer');
   container.innerHTML = '';
-  container.className = `p-6 gap-5 ${isList ? 'columns-1' : 'columns-1 sm:columns-2 lg:columns-4'}`;
 
-  const order = buildWidgetOrder(cfg);
-
-  order.forEach(id => {
-    let card = null;
-    if (id === 'clock' && cfg.showClock)                                    card = renderClockCard();
-    if (!card) { const n = (cfg.notes      || []).find(x => x.id === id); if (n) card = renderNoteCard(n);      }
-    if (!card) { const f = (cfg.feeds      || []).find(x => x.id === id); if (f) card = renderFeedCard(f);      }
-    if (!card) { const i = (cfg.iframes    || []).find(x => x.id === id); if (i) card = renderIframeCard(i);    }
-    if (!card) { const c = (cfg.countdowns || []).find(x => x.id === id); if (c) card = renderCountdownCard(c); }
-    if (!card) { const c = (cfg.calendars  || []).find(x => x.id === id); if (c) card = renderCalendarCard(c);  }
-    if (!card) { const g = (cfg.groups     || []).find(x => x.id === id); if (g) card = renderGroupCard(g);     }
-    if (!card) return;
-    // Hide group cards with no matching tag (non-edit mode, filter active)
-    if (state.activeTag && !state.editMode) {
-      const g = (cfg.groups || []).find(x => x.id === id);
-      if (g && !g.links.some(l => (l.tags || []).includes(state.activeTag))) return;
+  if (isList) {
+    // List mode: single flat column with CSS columns-1 (unchanged)
+    container.className = 'p-6 columns-1 gap-5';
+    buildWidgetOrder(cfg).forEach(id => {
+      const card = resolveCard(id, cfg);
+      if (!card) return;
+      if (state.activeTag && !state.editMode) {
+        const g = (cfg.groups || []).find(x => x.id === id);
+        if (g && !g.links.some(l => (l.tags || []).includes(state.activeTag))) return;
+      }
+      card.dataset.widgetId = id;
+      card.classList.add('break-inside-avoid', 'mb-5');
+      if (state.editMode) attachWidgetDnd(card, id);
+      container.appendChild(card);
+    });
+    if (state.editMode) {
+      const addBtn = document.createElement('button');
+      addBtn.className = `rounded-xl border-2 border-dashed border-stone-300 dark:border-stone-600 p-6 text-sm font-medium ${FIXED.sub} hover:bg-black/5 dark:hover:bg-white/5 transition-colors w-full break-inside-avoid mb-5`;
+      addBtn.innerHTML = '<span class="text-2xl block mb-1">+</span>Add widget';
+      addBtn.onclick = openAddWidgetModal;
+      container.appendChild(addBtn);
     }
-    card.dataset.widgetId = id;
-    card.classList.add('break-inside-avoid', 'mb-5');
-    if (state.editMode) attachWidgetDnd(card, id);
-    container.appendChild(card);
-  });
+  } else {
+    // Grid mode: Trello-style explicit column containers
+    container.className = 'p-6 flex gap-5 items-start overflow-x-auto';
+    const cols = buildWidgetColumns(cfg);
 
-  // Add widget button (edit mode) — opens chooser modal
-  if (state.editMode) {
-    const addBtn = document.createElement('button');
-    addBtn.className = `rounded-xl border-2 border-dashed border-stone-300 dark:border-stone-600 p-6 text-sm font-medium ${FIXED.sub} hover:bg-black/5 dark:hover:bg-white/5 transition-colors w-full break-inside-avoid mb-5`;
-    addBtn.innerHTML = '<span class="text-2xl block mb-1">+</span>Add widget';
-    addBtn.onclick = openAddWidgetModal;
-    container.appendChild(addBtn);
+    cols.forEach((colItems, colIdx) => {
+      const colEl = document.createElement('div');
+      colEl.className = 'flex-1 min-w-[220px] flex flex-col gap-4';
+      colEl.dataset.colIdx = colIdx;
+
+      // ── Column header (edit mode only) ──────────────────────────────────────
+      if (state.editMode) {
+        const hdr = document.createElement('div');
+        hdr.className = `flex items-center gap-2 px-3 py-2 rounded-xl border ${FIXED.card} text-xs font-medium ${FIXED.sub} select-none cursor-default`;
+
+        // Column drag handle
+        const handle = mkHandle(`${FIXED.sub} cursor-grab active:cursor-grabbing`);
+        handle.draggable = true;
+        handle.addEventListener('dragstart', e => {
+          e.stopPropagation();
+          dnd = { type: 'column', idx: colIdx };
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', `col-${colIdx}`);
+          setTimeout(() => { colEl.style.opacity = '0.4'; }, 0);
+        });
+        handle.addEventListener('dragend', () => {
+          colEl.style.opacity = '';
+          clearColumnIndicators();
+          dnd = { type: null };
+        });
+        hdr.appendChild(handle);
+
+        const label = document.createElement('span');
+        label.className = 'flex-1';
+        label.textContent = `Column ${colIdx + 1}`;
+        hdr.appendChild(label);
+
+        const countBadge = document.createElement('span');
+        countBadge.className = 'opacity-50';
+        countBadge.textContent = colItems.length;
+        hdr.appendChild(countBadge);
+
+        // Delete column button
+        const delBtn = mkBtn('✕', 'Remove column', `opacity-50 hover:opacity-100 transition-opacity px-1`, async () => {
+          const currentCols = buildWidgetColumns(state.config);
+          if (currentCols.length <= 1) return;
+          const newCols = currentCols.map((c, i) => i === colIdx ? [] : [...c]);
+          // Move orphaned items to column 0
+          currentCols[colIdx].forEach(id => newCols[0].push(id));
+          const filtered = newCols.filter((_, i) => i !== colIdx);
+          await saveColumns(filtered);
+        });
+        hdr.appendChild(delBtn);
+
+        colEl.appendChild(hdr);
+      }
+
+      // ── Column-level drag-and-drop ───────────────────────────────────────────
+      if (state.editMode) {
+        colEl.addEventListener('dragover', e => {
+          // Reordering columns
+          if (dnd.type === 'column' && dnd.idx !== colIdx) {
+            e.preventDefault();
+            clearColumnIndicators();
+            const rect = colEl.getBoundingClientRect();
+            const pos = e.clientX < rect.left + rect.width / 2 ? 'left' : 'right';
+            colEl.style.boxShadow = pos === 'left' ? '-3px 0 0 0 #6366f1' : '3px 0 0 0 #6366f1';
+            colEl.dataset.colDropPos = pos;
+            return;
+          }
+          // Widget onto empty column space (not onto a card)
+          if (dnd.type === 'widget' && !e.target.closest('[data-widget-id]')) {
+            e.preventDefault();
+            clearColumnIndicators();
+            colEl.style.outline = '2px dashed #6366f1';
+            colEl.style.outlineOffset = '4px';
+          }
+        });
+
+        colEl.addEventListener('dragleave', e => {
+          if (!colEl.contains(e.relatedTarget)) clearColumnIndicators();
+        });
+
+        colEl.addEventListener('drop', async e => {
+          clearColumnIndicators();
+          colEl.style.opacity = '';
+
+          if (dnd.type === 'column' && dnd.idx !== colIdx) {
+            e.preventDefault();
+            const pos = colEl.dataset.colDropPos || 'right';
+            const newCols = moveColumn(buildWidgetColumns(state.config), dnd.idx, colIdx, pos);
+            dnd = { type: null };
+            await saveColumns(newCols);
+            return;
+          }
+
+          if (dnd.type === 'widget' && !e.target.closest('[data-widget-id]')) {
+            e.preventDefault();
+            const newCols = moveWidget(buildWidgetColumns(state.config), dnd.id, colIdx, null, 'append');
+            dnd = { type: null };
+            await saveColumns(newCols);
+          }
+        });
+      }
+
+      // ── Cards ────────────────────────────────────────────────────────────────
+      colItems.forEach(id => {
+        const card = resolveCard(id, cfg);
+        if (!card) return;
+        if (state.activeTag && !state.editMode) {
+          const g = (cfg.groups || []).find(x => x.id === id);
+          if (g && !g.links.some(l => (l.tags || []).includes(state.activeTag))) return;
+        }
+        card.dataset.widgetId = id;
+        if (state.editMode) attachWidgetDnd(card, id);
+        colEl.appendChild(card);
+      });
+
+      // ── Add widget button (per column, edit mode) ────────────────────────────
+      if (state.editMode) {
+        const addBtn = document.createElement('button');
+        addBtn.className = `rounded-xl border-2 border-dashed border-stone-300 dark:border-stone-600 py-3 text-sm font-medium ${FIXED.sub} hover:bg-black/5 dark:hover:bg-white/5 transition-colors w-full`;
+        addBtn.innerHTML = '+ Add';
+        addBtn.onclick = () => { addingToColIdx = colIdx; openAddWidgetModal(); };
+        colEl.appendChild(addBtn);
+      }
+
+      container.appendChild(colEl);
+    });
+
+    // Add column button (edit mode)
+    if (state.editMode) {
+      const addColBtn = document.createElement('button');
+      addColBtn.className = `flex-shrink-0 w-14 self-start rounded-xl border-2 border-dashed border-stone-300 dark:border-stone-600 py-5 text-xs font-medium ${FIXED.sub} hover:bg-black/5 dark:hover:bg-white/5 transition-colors flex flex-col items-center gap-1`;
+      addColBtn.title = 'Add column';
+      addColBtn.innerHTML = '<span class="text-lg leading-none">+</span><span>Col</span>';
+      addColBtn.onclick = async () => {
+        await saveColumns([...buildWidgetColumns(state.config), []]);
+      };
+      container.appendChild(addColBtn);
+    }
   }
 
   renderPinned();
@@ -510,6 +717,18 @@ function render() {
     requestAnimationFrame(updateClock);
     fetchWeather();
   }
+}
+
+// Resolve a widget ID to its rendered card element (or null)
+function resolveCard(id, cfg) {
+  if (id === 'clock' && cfg.showClock)                                    return renderClockCard();
+  const n = (cfg.notes      || []).find(x => x.id === id); if (n) return renderNoteCard(n);
+  const f = (cfg.feeds      || []).find(x => x.id === id); if (f) return renderFeedCard(f);
+  const i = (cfg.iframes    || []).find(x => x.id === id); if (i) return renderIframeCard(i);
+  const c = (cfg.countdowns || []).find(x => x.id === id); if (c) return renderCountdownCard(c);
+  const ca= (cfg.calendars  || []).find(x => x.id === id); if (ca) return renderCalendarCard(ca);
+  const g = (cfg.groups     || []).find(x => x.id === id); if (g) return renderGroupCard(g);
+  return null;
 }
 
 function applyCustomCss(css) {
