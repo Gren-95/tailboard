@@ -480,8 +480,9 @@ app.post('/api/groups/:id/links', (req, res) => {
     ping:    req.body.ping !== false,
     pingUrl: String(req.body.pingUrl || '').trim().slice(0, 2000),
     pinned:  Boolean(req.body.pinned),
-    hotkey:  String(req.body.hotkey || '').trim().slice(0,1).toLowerCase().replace(/[^a-z0-9]/g,''),
-    tags:    Array.isArray(req.body.tags) ? req.body.tags.map(t => String(t).trim().slice(0, 30)).filter(Boolean).slice(0, 10) : [],
+    hotkey:   String(req.body.hotkey || '').trim().slice(0,1).toLowerCase().replace(/[^a-z0-9]/g,''),
+    tags:     Array.isArray(req.body.tags) ? req.body.tags.map(t => String(t).trim().slice(0, 30)).filter(Boolean).slice(0, 10) : [],
+    openMode: ['tab','self','modal'].includes(req.body.openMode) ? req.body.openMode : 'tab',
   };
   group.links.push(link);
   saveConfig(cfg);
@@ -518,6 +519,7 @@ app.put('/api/groups/:gid/links/:lid', (req, res) => {
   if (req.body.pinned     !== undefined) link.pinned     = Boolean(req.body.pinned);
   if (req.body.hotkey     !== undefined) link.hotkey     = String(req.body.hotkey || '').trim().slice(0,1).toLowerCase().replace(/[^a-z0-9]/g,'');
   if (req.body.tags       !== undefined) link.tags       = Array.isArray(req.body.tags) ? req.body.tags.map(t => String(t).trim().slice(0, 30)).filter(Boolean).slice(0, 10) : [];
+  if (req.body.openMode   !== undefined) link.openMode   = ['tab','self','modal'].includes(req.body.openMode) ? req.body.openMode : 'tab';
   saveConfig(cfg);
   res.json(link);
 });
