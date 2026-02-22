@@ -207,7 +207,12 @@ const WIDGET = {
 </div>
 
 <!-- Main grid -->
-<main id="groupsContainer" class="p-6 grid gap-5 items-start"></main>
+<main id="groupsContainer" class="p-6 grid gap-5 items-start transition-opacity duration-150"></main>
+
+<!-- Page-level reload spinner (shown during reload(), hidden when render completes) -->
+<div id="pageSpinner" class="hidden fixed inset-0 z-40 pointer-events-none flex items-center justify-center">
+  <div class="w-9 h-9 rounded-full border-[3px] border-stone-200 dark:border-stone-700 border-t-indigo-500 animate-spin"></div>
+</div>
 
 <!-- Modal overlay -->
 <div id="modalOverlay" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
@@ -291,9 +296,21 @@ async function api(method, path, body) {
 }
 
 async function reload() {
-  state.config = await api('GET', '/api/config');
-  render();
-  applyStatusDots();
+  const container = document.getElementById('groupsContainer');
+  const spinner   = document.getElementById('pageSpinner');
+  if (container) container.style.opacity = '0.35';
+  if (spinner)   spinner.classList.remove('hidden');
+  try {
+    state.config = await api('GET', '/api/config');
+    render();
+    applyStatusDots();
+  } finally {
+    if (spinner) spinner.classList.add('hidden');
+    if (container) {
+      // next frame so the rebuilt DOM is painted first, then fade in
+      requestAnimationFrame(() => { container.style.opacity = '1'; });
+    }
+  }
 }
 
 // Start status polling: first poll 3 s after page load, then every 30 s
