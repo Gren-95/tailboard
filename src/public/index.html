@@ -169,6 +169,14 @@ const WIDGET = {
         class="w-full text-left px-4 py-2.5 text-sm text-stone-700 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-700/60 transition-colors">
         🕐 Show clock
       </button>
+      <div class="flex items-center justify-between px-4 py-2">
+        <span class="text-xs font-medium uppercase tracking-wide text-stone-400 dark:text-stone-500">Zoom</span>
+        <div class="flex items-center gap-1">
+          <button id="menuZoomOut"  class="w-7 h-7 flex items-center justify-center rounded-md text-sm font-bold text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-700 transition-colors">−</button>
+          <button id="menuZoomReset" class="min-w-[3rem] h-7 px-1 text-xs font-mono text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-700 rounded-md transition-colors">100%</button>
+          <button id="menuZoomIn"   class="w-7 h-7 flex items-center justify-center rounded-md text-sm font-bold text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-700 transition-colors">+</button>
+        </div>
+      </div>
       <hr id="menuLogoutSep" class="hidden my-1 border-stone-200 dark:border-stone-700">
       <a id="menuLogout" href="/logout"
         class="hidden block px-4 py-2.5 text-sm text-stone-500 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-700/60 transition-colors">
@@ -204,7 +212,7 @@ const WIDGET = {
       <svg class="w-4 h-4 flex-shrink-0 text-stone-400 dark:text-stone-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
         <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
       </svg>
-      <input id="searchInput" type="text" placeholder="Search links…"
+      <input id="searchInput" type="text" placeholder="Search links…" autocomplete="off"
         class="flex-1 bg-transparent text-sm text-stone-900 dark:text-stone-50 placeholder-stone-400 dark:placeholder-stone-500 outline-none" />
       <span id="searchCount" class="text-xs text-stone-400 dark:text-stone-500 tabular-nums"></span>
       <kbd class="hidden sm:inline-block text-xs font-mono px-1.5 py-0.5 rounded border border-stone-200 dark:border-stone-700 text-stone-400 dark:text-stone-500">Esc</kbd>
@@ -230,6 +238,25 @@ let state = { config: null, editMode: false };
 
 // Drag-and-drop tracking
 let dnd = { type: null, id: null, groupId: null };
+
+// ─── Zoom ─────────────────────────────────────────────────────────────────────
+const ZOOM_LEVELS = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200];
+let currentZoom = parseInt(localStorage.getItem('tbzoom') || '100', 10);
+if (!ZOOM_LEVELS.includes(currentZoom)) currentZoom = 100;
+
+function applyZoom(level) {
+  currentZoom = level;
+  localStorage.setItem('tbzoom', level);
+  document.body.style.zoom = level + '%';
+  const resetBtn = document.getElementById('menuZoomReset');
+  if (resetBtn) resetBtn.textContent = level + '%';
+  const outBtn = document.getElementById('menuZoomOut');
+  const inBtn  = document.getElementById('menuZoomIn');
+  if (outBtn) outBtn.disabled = level <= ZOOM_LEVELS[0];
+  if (inBtn)  inBtn.disabled  = level >= ZOOM_LEVELS[ZOOM_LEVELS.length - 1];
+}
+
+applyZoom(currentZoom);
 
 // Service status  (linkId → 'up' | 'down')
 let statusMap = {};
@@ -1923,6 +1950,7 @@ function mkInput(value, placeholder, b) {
   el.type = 'text';
   el.value = value || '';
   el.placeholder = placeholder || '';
+  el.autocomplete = 'off';
   el.className = `w-full px-3 py-2 rounded-lg text-sm border ${b.card} ${b.text} focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all`;
   return el;
 }
@@ -2276,6 +2304,7 @@ function openNoteModal(note) {
   const contentArea = document.createElement('textarea');
   contentArea.value = note ? (note.content || '') : '';
   contentArea.placeholder = 'Write your note here…';
+  contentArea.autocomplete = 'off';
   contentArea.rows = 6;
   contentArea.className = `w-full px-3 py-2 rounded-lg text-sm border ${b.card} ${b.text} focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all resize-y font-mono`;
   wrap.appendChild(contentArea);
@@ -2619,6 +2648,16 @@ document.getElementById('menuClockToggle').addEventListener('click', async () =>
   await api('PUT', '/api/config', { showClock: next });
   state.config.showClock = next;
   render();
+});
+
+document.getElementById('menuZoomOut').addEventListener('click', () => {
+  const idx = ZOOM_LEVELS.indexOf(currentZoom);
+  if (idx > 0) applyZoom(ZOOM_LEVELS[idx - 1]);
+});
+document.getElementById('menuZoomReset').addEventListener('click', () => applyZoom(100));
+document.getElementById('menuZoomIn').addEventListener('click', () => {
+  const idx = ZOOM_LEVELS.indexOf(currentZoom);
+  if (idx < ZOOM_LEVELS.length - 1) applyZoom(ZOOM_LEVELS[idx + 1]);
 });
 
 document.addEventListener('click', e => {
