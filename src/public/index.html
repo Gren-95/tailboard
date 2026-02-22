@@ -516,7 +516,11 @@ function applyBase(palette) {
   }
 
   const vt = document.getElementById('menuViewToggle');
-  if (vt) vt.textContent = state.config && state.config.viewMode === 'list' ? '⊞ Grid view' : '☰ List view';
+  if (vt) {
+    const smallScreen = window.innerWidth < 640;
+    vt.classList.toggle('hidden', smallScreen);
+    if (!smallScreen) vt.textContent = state.config && state.config.viewMode === 'list' ? '⊞ Grid view' : '☰ List view';
+  }
 
   const ct = document.getElementById('menuClockToggle');
   if (ct) ct.textContent = state.config && state.config.showClock ? '🕐 Hide clock' : '🕐 Show clock';
@@ -530,7 +534,7 @@ function applyBase(palette) {
 function render() {
   const cfg = state.config;
   const b = FIXED;
-  const isList = cfg.viewMode === 'list';
+  const isList = cfg.viewMode === 'list' || window.innerWidth < 640;
 
   document.title = cfg.title || 'Tailboard';
   document.getElementById('dashTitle').textContent = cfg.title || 'Tailboard';
@@ -784,7 +788,7 @@ function renderTagFilterBar() {
 function renderGroupCard(group) {
   const cfg = state.config;
   const b = FIXED;
-  const isList = cfg.viewMode === 'list';
+  const isList = cfg.viewMode === 'list' || window.innerWidth < 640;
   const acc = ACCENT[group.accent] || ACCENT.slate;
 
   const section = document.createElement('div');
@@ -3269,6 +3273,17 @@ function updateClock() {
 setInterval(updateClock, 30_000);
 
 reload();
+
+// Re-render when crossing the small-screen breakpoint (< 640px)
+let _resizeTimer;
+let _lastSmall = window.innerWidth < 640;
+window.addEventListener('resize', () => {
+  clearTimeout(_resizeTimer);
+  _resizeTimer = setTimeout(() => {
+    const nowSmall = window.innerWidth < 640;
+    if (nowSmall !== _lastSmall) { _lastSmall = nowSmall; if (state.config) render(); }
+  }, 150);
+});
 
 // Show sign-out in menu if auth is enabled
 api('GET', '/api/auth').then(({ enabled }) => {
