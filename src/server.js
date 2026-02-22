@@ -155,6 +155,8 @@ const DEFAULT_CONFIG = {
   feeds:   [],
   iframes: [],
   groups: [],
+  widgetOrder: [],
+  colSpan:     {},
 };
 
 function loadConfig() {
@@ -271,7 +273,7 @@ app.get('/api/config', (req, res) => {
 
 app.put('/api/config', (req, res) => {
   const cfg = loadConfig();
-  const { title, basePalette, darkMode, pingInterval, viewMode, showClock, weather, background } = req.body;
+  const { title, basePalette, darkMode, pingInterval, viewMode, showClock, weather, background, widgetOrder, colSpan } = req.body;
   if (title        !== undefined) cfg.title        = String(title).trim().slice(0, 100);
   if (basePalette  !== undefined) cfg.basePalette  = String(basePalette);
   if (darkMode     !== undefined) cfg.darkMode     = Boolean(darkMode);
@@ -292,6 +294,8 @@ app.put('/api/config', (req, res) => {
       value: String(background.value || '').trim().slice(0, 500),
     };
   }
+  if (Array.isArray(widgetOrder)) cfg.widgetOrder = widgetOrder;
+  if (colSpan && typeof colSpan === 'object' && !Array.isArray(colSpan)) cfg.colSpan = colSpan;
   saveConfig(cfg);
   res.json(cfg);
 });
@@ -327,6 +331,8 @@ app.post('/api/config/import', (req, res) => {
     feeds:   Array.isArray(body.feeds)   ? body.feeds   : current.feeds,
     iframes: Array.isArray(body.iframes) ? body.iframes : current.iframes,
     groups:       body.groups,
+    widgetOrder: Array.isArray(body.widgetOrder) ? body.widgetOrder : current.widgetOrder,
+    colSpan:     (body.colSpan && typeof body.colSpan === 'object' && !Array.isArray(body.colSpan)) ? body.colSpan : current.colSpan,
   };
   saveConfig(merged);
   res.json({ ok: true });
@@ -403,6 +409,7 @@ app.post('/api/groups', (req, res) => {
     links: [],
   };
   cfg.groups.push(group);
+  cfg.widgetOrder = [...(cfg.widgetOrder || []), group.id];
   saveConfig(cfg);
   res.status(201).json(group);
 });
@@ -436,6 +443,8 @@ app.delete('/api/groups/:id', (req, res) => {
   const idx = cfg.groups.findIndex(g => g.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'group not found' });
   cfg.groups.splice(idx, 1);
+  cfg.widgetOrder = (cfg.widgetOrder || []).filter(id => id !== req.params.id);
+  if (cfg.colSpan) delete cfg.colSpan[req.params.id];
   saveConfig(cfg);
   res.json({ ok: true });
 });
@@ -642,6 +651,7 @@ app.post('/api/notes', (req, res) => {
   };
   cfg.notes = cfg.notes || [];
   cfg.notes.push(note);
+  cfg.widgetOrder = [...(cfg.widgetOrder || []), note.id];
   saveConfig(cfg);
   res.status(201).json(note);
 });
@@ -663,6 +673,8 @@ app.delete('/api/notes/:id', (req, res) => {
   const idx = cfg.notes.findIndex(n => n.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'note not found' });
   cfg.notes.splice(idx, 1);
+  cfg.widgetOrder = (cfg.widgetOrder || []).filter(id => id !== req.params.id);
+  if (cfg.colSpan) delete cfg.colSpan[req.params.id];
   saveConfig(cfg);
   res.json({ ok: true });
 });
@@ -680,6 +692,7 @@ app.post('/api/feeds', (req, res) => {
   if (!feed.url) return res.status(400).json({ error: 'url required' });
   cfg.feeds = cfg.feeds || [];
   cfg.feeds.push(feed);
+  cfg.widgetOrder = [...(cfg.widgetOrder || []), feed.id];
   saveConfig(cfg);
   res.status(201).json(feed);
 });
@@ -706,6 +719,8 @@ app.delete('/api/feeds/:id', (req, res) => {
   if (idx === -1) return res.status(404).json({ error: 'feed not found' });
   rssCache.delete(cfg.feeds[idx].url);
   cfg.feeds.splice(idx, 1);
+  cfg.widgetOrder = (cfg.widgetOrder || []).filter(id => id !== req.params.id);
+  if (cfg.colSpan) delete cfg.colSpan[req.params.id];
   saveConfig(cfg);
   res.json({ ok: true });
 });
@@ -723,6 +738,7 @@ app.post('/api/iframes', (req, res) => {
   if (!iframe.url) return res.status(400).json({ error: 'url required' });
   cfg.iframes = cfg.iframes || [];
   cfg.iframes.push(iframe);
+  cfg.widgetOrder = [...(cfg.widgetOrder || []), iframe.id];
   saveConfig(cfg);
   res.status(201).json(iframe);
 });
@@ -745,6 +761,21 @@ app.delete('/api/iframes/:id', (req, res) => {
   const idx = cfg.iframes.findIndex(i => i.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'iframe not found' });
   cfg.iframes.splice(idx, 1);
+  cfg.widgetOrder = (cfg.widgetOrder || []).filter(id => id !== req.params.id);
+  if (cfg.colSpan) delete cfg.colSpan[req.params.id];
+  saveConfig(cfg);
+  res.json({ ok: true });
+});
+
+// ─── Widget order ─────────────────────────────────────────────────────────────
+
+app.put('/api/widgetOrder', (req, res) => {
+  const cfg = loadConfig();
+  const { order, colSpan } = req.body;
+  if (Array.isArray(order)) cfg.widgetOrder = order;
+  if (colSpan && typeof colSpan === 'object' && !Array.isArray(colSpan)) {
+    cfg.colSpan = { ...(cfg.colSpan || {}), ...colSpan };
+  }
   saveConfig(cfg);
   res.json({ ok: true });
 });
