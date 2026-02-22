@@ -557,6 +557,52 @@ function applyBase(palette) {
   if (meta) meta.content = PALETTE_HEX[palette] || '#57534e';
 }
 
+// ─── Link open helper ─────────────────────────────────────────────────────────
+
+function openLink(link) {
+  const mode = link.openMode || 'tab';
+  if (mode === 'self') {
+    window.location.href = link.url;
+  } else if (mode === 'modal') {
+    const b = FIXED;
+    const wrap = document.createElement('div');
+
+    const header = document.createElement('div');
+    header.className = 'flex items-center gap-2 mb-3';
+    if (link.icon) {
+      const img = document.createElement('img');
+      img.src = `/api/icon/${link.icon}`;
+      img.className = 'w-5 h-5 object-contain flex-shrink-0';
+      img.onerror = () => img.remove();
+      header.appendChild(img);
+    }
+    const nameEl = document.createElement('span');
+    nameEl.className = `font-semibold text-sm truncate flex-1 ${b.text}`;
+    nameEl.textContent = link.name;
+    header.appendChild(nameEl);
+    const extLink = document.createElement('a');
+    extLink.href = link.url;
+    extLink.target = '_blank';
+    extLink.rel = 'noopener';
+    extLink.title = 'Open in new tab';
+    extLink.className = `flex-shrink-0 opacity-50 hover:opacity-100 transition-opacity ${b.text}`;
+    extLink.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/></svg>';
+    header.appendChild(extLink);
+    wrap.appendChild(header);
+
+    const frame = document.createElement('iframe');
+    frame.src = link.url;
+    frame.className = 'w-full rounded-lg border border-stone-200 dark:border-stone-700';
+    frame.style.height = '68vh';
+    frame.allow = 'fullscreen';
+    wrap.appendChild(frame);
+
+    openModal(wrap, 'max-w-5xl');
+  } else {
+    window.open(link.url, '_blank', 'noopener');
+  }
+}
+
 // ─── Render ──────────────────────────────────────────────────────────────────
 
 function render() {
@@ -1009,8 +1055,8 @@ function renderGroupCard(group) {
       } else {
         row.classList.add('cursor-pointer', 'hover:bg-black/5', 'dark:hover:bg-white/5');
         row.tabIndex = 0;
-        row.addEventListener('click', () => window.open(link.url, '_blank', 'noopener'));
-        row.addEventListener('keydown', e => { if (e.key === 'Enter') window.open(link.url, '_blank', 'noopener'); });
+        row.addEventListener('click', () => openLink(link));
+        row.addEventListener('keydown', e => { if (e.key === 'Enter') openLink(link); });
       }
 
       // Icon (includes status dot)
@@ -1394,9 +1440,12 @@ function renderPinned() {
     } else {
       const chip = document.createElement('a');
       chip.href = link.url;
-      chip.target = '_blank';
+      chip.target = (link.openMode === 'self') ? '_self' : '_blank';
       chip.rel = 'noopener';
       chip.className = `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium border ${FIXED.card} ${FIXED.text} hover:bg-black/5 dark:hover:bg-white/5 transition-colors`;
+      if (link.openMode === 'modal') {
+        chip.addEventListener('click', e => { e.preventDefault(); openLink(link); });
+      }
       if (link.icon) {
         const img = document.createElement('img');
         img.src = `/api/icon/${link.icon}`;
@@ -1507,7 +1556,7 @@ document.addEventListener('keydown', e => {
     const match = allLinks.find(l => l.hotkey && l.hotkey === key);
     if (match && !['input','textarea','select'].includes(document.activeElement?.tagName?.toLowerCase())) {
       e.preventDefault();
-      window.open(match.url, '_blank', 'noopener');
+      openLink(match);
     }
   }
   if (searchOpen) {
@@ -1619,6 +1668,25 @@ function openLinkModal(groupId, link) {
   const urlInput = mkInput(link ? link.url : '', 'http://192.168.1.10:32400', b);
   urlInput.type = 'url';
   wrap.appendChild(urlInput);
+
+  // Open mode
+  const openModeLabel = mkLabel('Open in', b.sub);
+  openModeLabel.className += ' mt-3 block';
+  wrap.appendChild(openModeLabel);
+  const openModeSelect = document.createElement('select');
+  openModeSelect.className = `w-full px-3 py-2 rounded-lg text-sm border ${b.card} ${b.text} focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all`;
+  [['tab', 'New tab'], ['self', 'Same tab'], ['modal', 'Modal (iframe)']].forEach(([val, label]) => {
+    const opt = document.createElement('option');
+    opt.value = val;
+    opt.textContent = label;
+    opt.selected = (link ? (link.openMode || 'tab') : 'tab') === val;
+    openModeSelect.appendChild(opt);
+  });
+  wrap.appendChild(openModeSelect);
+  const openModeHint = document.createElement('p');
+  openModeHint.className = `text-xs mt-1 ${b.sub}`;
+  openModeHint.textContent = 'Modal requires the target page to allow iframes (many public sites block this).';
+  wrap.appendChild(openModeHint);
 
   const iconLabel = mkLabel('Icon slug', b.sub);
   iconLabel.className += ' mt-3 block';
@@ -1820,6 +1888,7 @@ function openLinkModal(groupId, link) {
     if (!url) { urlInput.focus(); return; }
     const payload = {
       name, url,
+      openMode: openModeSelect.value,
       icon: iconInput.value.trim().replace(/[^a-z0-9-]/g, ''),
       iconBg: selectedIconBg,
       description: descInput.value.trim(),
@@ -2222,8 +2291,8 @@ function renderSearchResults(query) {
     li.appendChild(badge);
 
     li.addEventListener('click', () => {
-      window.open(link.url, '_blank', 'noopener');
       closeSearch();
+      openLink(link);
     });
 
     list.appendChild(li);
