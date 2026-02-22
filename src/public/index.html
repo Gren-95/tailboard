@@ -14,6 +14,10 @@
     /* Drag handle cursor — also declared here so non-Tailwind browsers cover it */
     .drag-handle { cursor: grab; }
     .drag-handle:active { cursor: grabbing; }
+    /* Sharp corners mode */
+    .sharp, .sharp * { border-radius: 0 !important; }
+    /* Link row focus ring for keyboard nav */
+    .link-row:focus { outline: 2px solid #6366f1; outline-offset: -2px; }
   </style>
 </head>
 <body class="bg-white dark:bg-stone-950">
@@ -194,6 +198,14 @@ const WIDGET = {
   </div>
 </div>
 
+<!-- Tag filter bar -->
+<div id="tagFilterBar" class="hidden border-b border-stone-200 dark:border-stone-800">
+  <div class="px-6 py-2 flex items-center flex-wrap gap-2">
+    <span class="text-xs font-semibold uppercase tracking-wider text-stone-400 dark:text-stone-500 mr-1 flex-shrink-0">Filter</span>
+    <div id="tagChips" class="flex flex-wrap gap-1.5"></div>
+  </div>
+</div>
+
 <!-- Main grid -->
 <main id="groupsContainer" class="p-6 grid gap-5 items-start"></main>
 
@@ -234,7 +246,7 @@ const WIDGET = {
 <script>
 // ─── State ──────────────────────────────────────────────────────────────────
 
-let state = { config: null, editMode: false };
+let state = { config: null, editMode: false, activeTag: null };
 
 // Drag-and-drop tracking
 let dnd = { type: null, id: null, groupId: null };
@@ -335,10 +347,12 @@ function reorder(ids, fromId, targetId, pos) {
 function buildWidgetOrder(cfg) {
   const allIds = [];
   if (cfg.showClock) allIds.push('clock');
-  (cfg.notes   || []).forEach(n => allIds.push(n.id));
-  (cfg.feeds   || []).forEach(f => allIds.push(f.id));
-  (cfg.iframes || []).forEach(i => allIds.push(i.id));
-  (cfg.groups  || []).forEach(g => allIds.push(g.id));
+  (cfg.notes      || []).forEach(n => allIds.push(n.id));
+  (cfg.feeds      || []).forEach(f => allIds.push(f.id));
+  (cfg.iframes    || []).forEach(i => allIds.push(i.id));
+  (cfg.countdowns || []).forEach(c => allIds.push(c.id));
+  (cfg.calendars  || []).forEach(c => allIds.push(c.id));
+  (cfg.groups     || []).forEach(g => allIds.push(g.id));
   const stored = cfg.widgetOrder || [];
   const seen = new Set();
   const result = stored.filter(id => allIds.includes(id) && !seen.has(id) && seen.add(id));
@@ -439,12 +453,19 @@ function render() {
 
   order.forEach(id => {
     let card = null;
-    if (id === 'clock' && cfg.showClock)                              card = renderClockCard();
-    if (!card) { const n = (cfg.notes   || []).find(x => x.id === id); if (n) card = renderNoteCard(n);   }
-    if (!card) { const f = (cfg.feeds   || []).find(x => x.id === id); if (f) card = renderFeedCard(f);   }
-    if (!card) { const i = (cfg.iframes || []).find(x => x.id === id); if (i) card = renderIframeCard(i); }
-    if (!card) { const g = (cfg.groups  || []).find(x => x.id === id); if (g) card = renderGroupCard(g);  }
+    if (id === 'clock' && cfg.showClock)                                    card = renderClockCard();
+    if (!card) { const n = (cfg.notes      || []).find(x => x.id === id); if (n) card = renderNoteCard(n);      }
+    if (!card) { const f = (cfg.feeds      || []).find(x => x.id === id); if (f) card = renderFeedCard(f);      }
+    if (!card) { const i = (cfg.iframes    || []).find(x => x.id === id); if (i) card = renderIframeCard(i);    }
+    if (!card) { const c = (cfg.countdowns || []).find(x => x.id === id); if (c) card = renderCountdownCard(c); }
+    if (!card) { const c = (cfg.calendars  || []).find(x => x.id === id); if (c) card = renderCalendarCard(c);  }
+    if (!card) { const g = (cfg.groups     || []).find(x => x.id === id); if (g) card = renderGroupCard(g);     }
     if (!card) return;
+    // Hide group cards with no matching tag (non-edit mode, filter active)
+    if (state.activeTag && !state.editMode) {
+      const g = (cfg.groups || []).find(x => x.id === id);
+      if (g && !g.links.some(l => (l.tags || []).includes(state.activeTag))) return;
+    }
     card.dataset.widgetId = id;
     card.classList.add('break-inside-avoid', 'mb-5');
     if (state.editMode) attachWidgetDnd(card, id);
@@ -461,13 +482,43 @@ function render() {
   }
 
   renderPinned();
+  renderTagFilterBar();
   applyBackground(cfg.background);
-  (cfg.feeds || []).forEach(f => fetchRss(f));
+  applyCustomCss(cfg.customCss || '');
+  document.documentElement.classList.toggle('sharp', !!cfg.sharpCorners);
+  (cfg.feeds     || []).forEach(f => fetchRss(f));
+  (cfg.calendars || []).forEach(c => fetchIcal(c));
 
   if (cfg.showClock) {
     requestAnimationFrame(updateClock);
     fetchWeather();
   }
+}
+
+function applyCustomCss(css) {
+  let el = document.getElementById('customCssTag');
+  if (!el) { el = document.createElement('style'); el.id = 'customCssTag'; document.head.appendChild(el); }
+  el.textContent = css;
+}
+
+function renderTagFilterBar() {
+  const cfg = state.config;
+  const allTags = [...new Set((cfg.groups || []).flatMap(g => g.links.flatMap(l => l.tags || [])))].sort();
+  const bar   = document.getElementById('tagFilterBar');
+  const chips = document.getElementById('tagChips');
+  if (!allTags.length) { bar.classList.add('hidden'); state.activeTag = null; return; }
+  bar.classList.remove('hidden');
+  chips.innerHTML = '';
+  allTags.forEach(tag => {
+    const btn = document.createElement('button');
+    const active = state.activeTag === tag;
+    btn.textContent = tag;
+    btn.className = `text-xs px-2.5 py-1 rounded-full font-medium transition-colors ${
+      active ? 'bg-indigo-600 text-white' : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700'
+    }`;
+    btn.onclick = () => { state.activeTag = active ? null : tag; render(); };
+    chips.appendChild(btn);
+  });
 }
 
 // ─── Group card ───────────────────────────────────────────────────────────────
@@ -557,6 +608,12 @@ function renderGroupCard(group) {
   rightControls.className = 'flex items-center gap-1 flex-shrink-0';
 
   if (state.editMode) {
+    rightControls.appendChild(mkBtn('⇅', 'Sort A–Z', 'text-white/70 hover:text-white text-base px-1', async e => {
+      e.stopPropagation();
+      const sorted = [...group.links].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+      await api('PUT', `/api/groups/${group.id}/links/reorder`, { order: sorted.map(l => l.id) });
+      await reload();
+    }));
     rightControls.appendChild(mkBtn('✎', 'Edit group', 'text-white/80 hover:text-white text-base px-1', e => {
       e.stopPropagation();
       openGroupModal(group);
@@ -661,7 +718,9 @@ function renderGroupCard(group) {
         });
       } else {
         row.classList.add('cursor-pointer', 'hover:bg-black/5', 'dark:hover:bg-white/5');
+        row.tabIndex = 0;
         row.addEventListener('click', () => window.open(link.url, '_blank', 'noopener'));
+        row.addEventListener('keydown', e => { if (e.key === 'Enter') window.open(link.url, '_blank', 'noopener'); });
       }
 
       // Icon (includes status dot)
@@ -685,6 +744,21 @@ function renderGroupCard(group) {
         desc.className = `text-xs truncate ${b.sub}`;
         desc.textContent = link.description;
         textWrap.appendChild(desc);
+      }
+      if ((link.tags || []).length && !isList) {
+        const tagRow = document.createElement('div');
+        tagRow.className = 'flex flex-wrap gap-1 mt-0.5';
+        (link.tags || []).forEach(tag => {
+          const chip = document.createElement('span');
+          chip.textContent = tag;
+          const isActive = state.activeTag === tag;
+          chip.className = `text-[10px] px-1.5 py-0.5 rounded-full font-medium cursor-pointer transition-colors ${
+            isActive ? 'bg-indigo-600 text-white' : 'bg-stone-100 dark:bg-stone-700 text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-600'
+          }`;
+          chip.onclick = e => { e.stopPropagation(); state.activeTag = isActive ? null : tag; render(); };
+          tagRow.appendChild(chip);
+        });
+        textWrap.appendChild(tagRow);
       }
 
       row.appendChild(iconWrap);
@@ -1092,6 +1166,23 @@ document.addEventListener('keydown', e => {
     if (searchOpen) closeSearch(); else openSearch();
     return;
   }
+  if ((e.ctrlKey || e.metaKey) && (e.key === '=' || e.key === '+')) {
+    e.preventDefault();
+    const idx = ZOOM_LEVELS.indexOf(currentZoom);
+    if (idx < ZOOM_LEVELS.length - 1) applyZoom(ZOOM_LEVELS[idx + 1]);
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === '-') {
+    e.preventDefault();
+    const idx = ZOOM_LEVELS.indexOf(currentZoom);
+    if (idx > 0) applyZoom(ZOOM_LEVELS[idx - 1]);
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === '0') {
+    e.preventDefault();
+    applyZoom(100);
+    return;
+  }
   if (e.key === '/' && !searchOpen) {
     const tag = document.activeElement ? document.activeElement.tagName : '';
     if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
@@ -1369,6 +1460,16 @@ function openLinkModal(groupId, link) {
   hotkeyHint.textContent = 'Single letter/digit. Press that key on the dashboard to open the link.';
   wrap.appendChild(hotkeyHint);
 
+  const tagsLabel = mkLabel('Tags', b.sub);
+  tagsLabel.className += ' mt-3 block';
+  wrap.appendChild(tagsLabel);
+  const tagsInput = mkInput((link?.tags || []).join(', '), 'media, home, work', b);
+  wrap.appendChild(tagsInput);
+  const tagsHint = document.createElement('p');
+  tagsHint.className = `text-xs mt-1 mb-1 ${b.sub}`;
+  tagsHint.textContent = 'Comma-separated. Used to filter links on the dashboard.';
+  wrap.appendChild(tagsHint);
+
   // Group picker — lets user move an existing link to a different group
   let targetGroupId = groupId;
   if (state.config.groups.length > 1) {
@@ -1416,6 +1517,7 @@ function openLinkModal(groupId, link) {
       pingUrl: pingCheck.checked ? pingUrlInput.value.trim() : '',
       pinned:  pinnedCheck.checked,
       hotkey: hotkeyInput.value.trim().slice(0,1).toLowerCase().replace(/[^a-z0-9]/g,''),
+      tags:   tagsInput.value.split(',').map(t => t.trim().toLowerCase()).filter(Boolean).slice(0, 10),
     };
     if (link) {
       if (targetGroupId !== groupId) {
@@ -1741,6 +1843,48 @@ function openSettingsModal() {
   ioNote.textContent = 'Import replaces all groups and links. Export downloads the current config as JSON.';
   wrap.appendChild(ioNote);
 
+  // ── Appearance ────────────────────────────────────────────────────────────────
+  const appSep = document.createElement('hr');
+  appSep.className = 'my-5 border-stone-200 dark:border-stone-700';
+  wrap.appendChild(appSep);
+  const appTitle = document.createElement('p');
+  appTitle.className = `text-xs font-semibold uppercase tracking-wider mb-3 ${b.sub}`;
+  appTitle.textContent = 'Appearance';
+  wrap.appendChild(appTitle);
+
+  const sharpRow = document.createElement('label');
+  sharpRow.className = 'flex items-center justify-between cursor-pointer';
+  const sharpLabel = document.createElement('span');
+  sharpLabel.className = `text-sm ${b.text}`;
+  sharpLabel.textContent = 'Sharp corners';
+  const sharpToggle = document.createElement('input');
+  sharpToggle.type = 'checkbox';
+  sharpToggle.checked = !!cfg.sharpCorners;
+  sharpToggle.className = 'w-4 h-4 accent-indigo-600';
+  sharpRow.appendChild(sharpLabel);
+  sharpRow.appendChild(sharpToggle);
+  wrap.appendChild(sharpRow);
+
+  // ── Advanced ──────────────────────────────────────────────────────────────────
+  const advSep = document.createElement('hr');
+  advSep.className = 'my-5 border-stone-200 dark:border-stone-700';
+  wrap.appendChild(advSep);
+  const advTitle = document.createElement('p');
+  advTitle.className = `text-xs font-semibold uppercase tracking-wider mb-1 ${b.sub}`;
+  advTitle.textContent = 'Custom CSS';
+  wrap.appendChild(advTitle);
+  const advHint = document.createElement('p');
+  advHint.className = `text-xs mb-2 ${b.sub}`;
+  advHint.textContent = 'Injected into <style> on every page load.';
+  wrap.appendChild(advHint);
+  const cssArea = document.createElement('textarea');
+  cssArea.value = cfg.customCss || '';
+  cssArea.placeholder = '/* e.g. body { font-family: monospace; } */';
+  cssArea.rows = 5;
+  cssArea.autocomplete = 'off';
+  cssArea.className = `w-full px-3 py-2 rounded-lg text-xs border font-mono ${b.card} ${b.text} focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all resize-y`;
+  wrap.appendChild(cssArea);
+
   const footer = document.createElement('div');
   footer.className = 'flex justify-end gap-2 mt-6';
   const cancelBtn = document.createElement('button');
@@ -1761,6 +1905,8 @@ function openSettingsModal() {
       basePalette: selectedBase,
       pingInterval: selectedPingInterval,
       background: { type: bgType, value: bgValue },
+      sharpCorners: sharpToggle.checked,
+      customCss: cssArea.value,
     });
     closeModal();
     await reload();
@@ -1995,20 +2141,24 @@ function openAddWidgetModal() {
   title.textContent = 'Add widget';
   wrap.appendChild(title);
 
-  const svgFolder = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v8.25A2.25 2.25 0 0 0 4.5 16.5h15a2.25 2.25 0 0 0 2.25-2.25V9A2.25 2.25 0 0 0 19.5 6.75h-5.379a1.5 1.5 0 0 1-1.06-.44Z"/></svg>`;
-  const svgDoc    = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"/></svg>`;
-  const svgRss    = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M12.75 19.5v-.75a7.5 7.5 0 0 0-7.5-7.5H4.5m0-6.75h.75c7.87 0 14.25 6.38 14.25 14.25v.75M6 18.75a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z"/></svg>`;
-  const svgCode   = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3-4.5 16.5"/></svg>`;
+  const svgFolder    = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v8.25A2.25 2.25 0 0 0 4.5 16.5h15a2.25 2.25 0 0 0 2.25-2.25V9A2.25 2.25 0 0 0 19.5 6.75h-5.379a1.5 1.5 0 0 1-1.06-.44Z"/></svg>`;
+  const svgDoc       = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"/></svg>`;
+  const svgRss       = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M12.75 19.5v-.75a7.5 7.5 0 0 0-7.5-7.5H4.5m0-6.75h.75c7.87 0 14.25 6.38 14.25 14.25v.75M6 18.75a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z"/></svg>`;
+  const svgCode      = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3-4.5 16.5"/></svg>`;
+  const svgClock     = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>`;
+  const svgCalendar  = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5"/></svg>`;
 
   const choices = [
-    { icon: svgFolder, label: 'Group',    desc: 'A group of links',      fn: openGroupModal  },
-    { icon: svgDoc,    label: 'Note',     desc: 'Markdown text card',    fn: openNoteModal   },
-    { icon: svgRss,    label: 'RSS Feed', desc: 'Live feed from a URL',  fn: openFeedModal   },
-    { icon: svgCode,   label: 'Embed',    desc: 'iFrame for any URL',    fn: openIframeModal },
+    { icon: svgFolder,   label: 'Group',     desc: 'A group of links',      fn: openGroupModal     },
+    { icon: svgDoc,      label: 'Note',      desc: 'Markdown text card',    fn: openNoteModal      },
+    { icon: svgRss,      label: 'RSS Feed',  desc: 'Live feed from a URL',  fn: openFeedModal      },
+    { icon: svgCode,     label: 'Embed',     desc: 'iFrame for any URL',    fn: openIframeModal    },
+    { icon: svgClock,    label: 'Countdown', desc: 'Date countdown timer',  fn: openCountdownModal },
+    { icon: svgCalendar, label: 'Calendar',  desc: 'iCal upcoming events',  fn: openCalendarModal  },
   ];
 
   const grid = document.createElement('div');
-  grid.className = 'grid grid-cols-2 gap-3';
+  grid.className = 'grid grid-cols-3 gap-3';
 
   choices.forEach(({ icon, label, desc, fn }) => {
     const btn = document.createElement('button');
@@ -2496,6 +2646,245 @@ function openIframeModal(iframe) {
   footer.appendChild(saveBtn);
   wrap.appendChild(footer);
 
+  openModal(wrap);
+  titleInput.focus();
+}
+
+// ─── Countdown card + modal ───────────────────────────────────────────────────
+
+function renderCountdownCard(cd) {
+  const cfg = state.config;
+  const t   = TOPBAR[cfg.basePalette] || TOPBAR.stone;
+  const b   = FIXED;
+  const card = document.createElement('div');
+  card.className = `group-section rounded-xl overflow-hidden border shadow-md ${b.card}`;
+
+  const hdr = document.createElement('div');
+  hdr.className = `flex items-center justify-between px-4 py-2.5 ${t.bar} ${t.text}`;
+  const hTitle = document.createElement('span');
+  hTitle.className = 'font-semibold text-sm tracking-wide truncate flex-1';
+  hTitle.textContent = cd.title || 'Countdown';
+  hdr.appendChild(hTitle);
+  if (state.editMode) {
+    hdr.appendChild(mkBtn('✎', 'Edit', 'opacity-70 hover:opacity-100 text-base px-1 transition-opacity', () => openCountdownModal(cd)));
+    hdr.appendChild(mkBtn('✕', 'Delete', 'opacity-70 hover:opacity-100 text-base px-1 transition-opacity', async () => {
+      if (!confirm(`Delete countdown "${cd.title}"?`)) return;
+      await api('DELETE', `/api/countdowns/${cd.id}`);
+      await reload();
+    }));
+    const handle = mkHandle('text-white/60 hover:text-white/90 text-base');
+    handle.draggable = true;
+    handle.addEventListener('dragstart', e => { e.stopPropagation(); dnd = { type: 'widget', id: cd.id }; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', cd.id); setTimeout(() => { card.style.opacity = '0.4'; }, 0); });
+    handle.addEventListener('dragend', () => { card.style.opacity = ''; clearWidgetIndicators(); dnd = { type: null }; });
+    hdr.insertBefore(handle, hTitle);
+  }
+  card.appendChild(hdr);
+
+  const body = document.createElement('div');
+  body.className = `px-4 py-4 text-center ${b.text}`;
+
+  function updateDisplay() {
+    const target = new Date(cd.targetDate);
+    const now    = Date.now();
+    const diff   = target - now;
+    const past   = diff < 0;
+    const abs    = Math.abs(diff);
+    const days   = Math.floor(abs / 86400000);
+    const hours  = Math.floor((abs % 86400000) / 3600000);
+    const mins   = Math.floor((abs % 3600000)  / 60000);
+    const secs   = Math.floor((abs % 60000)    / 1000);
+    body.innerHTML = `
+      <div class="text-3xl font-bold tabular-nums mb-1">${days}<span class="text-base font-normal opacity-60">d</span> ${String(hours).padStart(2,'0')}<span class="text-base font-normal opacity-60">h</span> ${String(mins).padStart(2,'0')}<span class="text-base font-normal opacity-60">m</span> ${String(secs).padStart(2,'0')}<span class="text-base font-normal opacity-60">s</span></div>
+      <div class="text-xs opacity-60">${past ? 'passed' : 'remaining'} · ${new Date(cd.targetDate).toLocaleDateString(undefined, { year:'numeric', month:'short', day:'numeric' })}</div>
+      ${cd.description ? `<div class="text-xs mt-1 opacity-50">${cd.description}</div>` : ''}
+    `;
+  }
+  updateDisplay();
+  const timer = setInterval(updateDisplay, 1000);
+  card.addEventListener('disconnectedCallback', () => clearInterval(timer));
+  // Clean up when card is removed from DOM
+  new MutationObserver(() => { if (!document.contains(card)) clearInterval(timer); }).observe(document.body, { childList: true, subtree: true });
+
+  card.appendChild(body);
+  return card;
+}
+
+function openCountdownModal(cd) {
+  const b = FIXED;
+  const wrap = document.createElement('div');
+
+  const title = document.createElement('h2');
+  title.className = `text-lg font-semibold mb-4 ${b.text}`;
+  title.textContent = cd ? 'Edit countdown' : 'Add countdown';
+  wrap.appendChild(title);
+
+  wrap.appendChild(mkLabel('Title', b.sub));
+  const titleInput = mkInput(cd?.title || '', 'e.g. SSL cert renewal', b);
+  wrap.appendChild(titleInput);
+
+  const dateLabel = mkLabel('Target date', b.sub);
+  dateLabel.className += ' mt-3 block';
+  wrap.appendChild(dateLabel);
+  const dateInput = document.createElement('input');
+  dateInput.type = 'date';
+  dateInput.value = cd?.targetDate ? cd.targetDate.slice(0, 10) : '';
+  dateInput.autocomplete = 'off';
+  dateInput.className = `w-full px-3 py-2 rounded-lg text-sm border ${b.card} ${b.text} focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all`;
+  wrap.appendChild(dateInput);
+
+  const descLabel = mkLabel('Description (optional)', b.sub);
+  descLabel.className += ' mt-3 block';
+  wrap.appendChild(descLabel);
+  const descInput = mkInput(cd?.description || '', 'Short note…', b);
+  wrap.appendChild(descInput);
+
+  const footer = document.createElement('div');
+  footer.className = 'flex justify-end gap-2 mt-6';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button'; cancelBtn.textContent = 'Cancel';
+  cancelBtn.className = `px-4 py-2 rounded-lg text-sm font-medium border ${b.text} opacity-60 hover:opacity-100 transition-opacity`;
+  cancelBtn.onclick = closeModal;
+  footer.appendChild(cancelBtn);
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button'; saveBtn.textContent = cd ? 'Save' : 'Create';
+  saveBtn.className = 'px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-500 transition-colors';
+  saveBtn.onclick = async () => {
+    const t = titleInput.value.trim() || 'Countdown';
+    const d = dateInput.value;
+    if (!d) { dateInput.focus(); return; }
+    if (cd) { await api('PUT', `/api/countdowns/${cd.id}`, { title: t, targetDate: d, description: descInput.value.trim() }); }
+    else    { await api('POST', '/api/countdowns', { title: t, targetDate: d, description: descInput.value.trim() }); }
+    closeModal(); await reload();
+  };
+  footer.appendChild(saveBtn);
+  wrap.appendChild(footer);
+  openModal(wrap);
+  titleInput.focus();
+}
+
+// ─── Calendar card + modal ────────────────────────────────────────────────────
+
+const icalDataCache = new Map(); // calId → { events, time }
+
+async function fetchIcal(cal) {
+  const body = document.getElementById(`ical-${cal.id}`);
+  if (!body) return;
+  const cached = icalDataCache.get(cal.id);
+  if (cached) { renderIcalEvents(body, cached.events, cal.maxItems); return; }
+  body.textContent = 'Loading…';
+  try {
+    const data = await api('GET', `/api/ical?url=${encodeURIComponent(cal.url)}`);
+    icalDataCache.set(cal.id, data);
+    renderIcalEvents(body, data.events, cal.maxItems);
+  } catch { body.textContent = 'Failed to load.'; }
+}
+
+function renderIcalEvents(body, events, maxItems) {
+  const b = FIXED;
+  const upcoming = events.filter(e => new Date(e.date) >= new Date(Date.now() - 86400000)).slice(0, maxItems || 10);
+  if (!upcoming.length) { body.textContent = 'No upcoming events.'; return; }
+  body.innerHTML = '';
+  upcoming.forEach(ev => {
+    const row = document.createElement('div');
+    row.className = `px-4 py-2.5 border-b border-black/[0.06] dark:border-white/[0.08] last:border-0`;
+    const date = new Date(ev.date);
+    const dateStr = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', weekday: 'short' });
+    row.innerHTML = `<div class="text-sm font-medium truncate ${b.text}">${ev.summary}</div><div class="text-xs ${b.sub}">${dateStr}${ev.location ? ' · ' + ev.location : ''}</div>`;
+    body.appendChild(row);
+  });
+}
+
+function renderCalendarCard(cal) {
+  const cfg = state.config;
+  const t   = TOPBAR[cfg.basePalette] || TOPBAR.stone;
+  const b   = FIXED;
+  const card = document.createElement('div');
+  card.className = `group-section rounded-xl overflow-hidden border shadow-md ${b.card}`;
+
+  const hdr = document.createElement('div');
+  hdr.className = `flex items-center justify-between px-4 py-2.5 ${t.bar} ${t.text}`;
+  const hTitle = document.createElement('span');
+  hTitle.className = 'font-semibold text-sm tracking-wide truncate flex-1';
+  hTitle.textContent = cal.title || 'Calendar';
+  hdr.appendChild(hTitle);
+  hdr.appendChild(mkBtn('↻', 'Refresh', 'opacity-70 hover:opacity-100 text-base px-1 transition-opacity', () => { icalDataCache.delete(cal.id); fetchIcal(cal); }));
+  if (state.editMode) {
+    hdr.appendChild(mkBtn('✎', 'Edit', 'opacity-70 hover:opacity-100 text-base px-1 transition-opacity', () => openCalendarModal(cal)));
+    hdr.appendChild(mkBtn('✕', 'Delete', 'opacity-70 hover:opacity-100 text-base px-1 transition-opacity', async () => {
+      if (!confirm(`Delete calendar "${cal.title}"?`)) return;
+      await api('DELETE', `/api/calendars/${cal.id}`);
+      await reload();
+    }));
+    const handle = mkHandle('text-white/60 hover:text-white/90 text-base');
+    handle.draggable = true;
+    handle.addEventListener('dragstart', e => { e.stopPropagation(); dnd = { type: 'widget', id: cal.id }; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', cal.id); setTimeout(() => { card.style.opacity = '0.4'; }, 0); });
+    handle.addEventListener('dragend', () => { card.style.opacity = ''; clearWidgetIndicators(); dnd = { type: null }; });
+    hdr.insertBefore(handle, hTitle);
+  }
+  card.appendChild(hdr);
+
+  const body = document.createElement('div');
+  body.id = `ical-${cal.id}`;
+  body.className = `text-xs ${b.sub} px-4 py-3`;
+  body.textContent = 'Loading…';
+  card.appendChild(body);
+  return card;
+}
+
+function openCalendarModal(cal) {
+  const b = FIXED;
+  const wrap = document.createElement('div');
+
+  const title = document.createElement('h2');
+  title.className = `text-lg font-semibold mb-4 ${b.text}`;
+  title.textContent = cal ? 'Edit calendar' : 'Add calendar';
+  wrap.appendChild(title);
+
+  wrap.appendChild(mkLabel('Title', b.sub));
+  const titleInput = mkInput(cal?.title || '', 'e.g. Family Calendar', b);
+  wrap.appendChild(titleInput);
+
+  const urlLabel = mkLabel('iCal URL (.ics)', b.sub);
+  urlLabel.className += ' mt-3 block';
+  wrap.appendChild(urlLabel);
+  const urlInput = mkInput(cal?.url || '', 'https://example.com/calendar.ics', b);
+  wrap.appendChild(urlInput);
+
+  let selectedMax = cal?.maxItems || 10;
+  const maxLabel = mkLabel('Max events', b.sub);
+  maxLabel.className += ' mt-3 block';
+  wrap.appendChild(maxLabel);
+  const maxRow = document.createElement('div');
+  maxRow.className = 'flex gap-2 flex-wrap';
+  [5, 10, 15, 20].forEach(n => {
+    const btn = document.createElement('button');
+    btn.type = 'button'; btn.textContent = n;
+    btn.className = `px-3 py-1.5 rounded-lg text-sm border transition-colors ${selectedMax === n ? 'bg-indigo-600 text-white border-indigo-600' : `border-stone-300 dark:border-stone-600 ${b.text}`}`;
+    btn.onclick = () => { selectedMax = n; maxRow.querySelectorAll('button').forEach(b => b.className = b.className.replace(/bg-indigo-600 text-white border-indigo-600/, `border-stone-300 dark:border-stone-600 ${FIXED.text}`)); btn.className = btn.className.replace(/border-stone-300 dark:border-stone-600 [^ ]+/, 'bg-indigo-600 text-white border-indigo-600'); };
+    maxRow.appendChild(btn);
+  });
+  wrap.appendChild(maxRow);
+
+  const footer = document.createElement('div');
+  footer.className = 'flex justify-end gap-2 mt-6';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button'; cancelBtn.textContent = 'Cancel';
+  cancelBtn.className = `px-4 py-2 rounded-lg text-sm font-medium border ${b.text} opacity-60 hover:opacity-100 transition-opacity`;
+  cancelBtn.onclick = closeModal;
+  footer.appendChild(cancelBtn);
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button'; saveBtn.textContent = cal ? 'Save' : 'Create';
+  saveBtn.className = 'px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-500 transition-colors';
+  saveBtn.onclick = async () => {
+    const t = titleInput.value.trim() || 'Calendar';
+    const u = urlInput.value.trim();
+    if (!u) { urlInput.focus(); return; }
+    if (cal) { await api('PUT', `/api/calendars/${cal.id}`, { title: t, url: u, maxItems: selectedMax }); }
+    else     { await api('POST', '/api/calendars', { title: t, url: u, maxItems: selectedMax }); }
+    closeModal(); await reload();
+  };
+  footer.appendChild(saveBtn);
+  wrap.appendChild(footer);
   openModal(wrap);
   titleInput.focus();
 }

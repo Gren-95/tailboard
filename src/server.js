@@ -149,12 +149,16 @@ const DEFAULT_CONFIG = {
   pingInterval: 60,
   viewMode: 'grid',
   showClock: false,
+  sharpCorners: false,
+  customCss: '',
   weather: { apiKey: '', city: '', units: 'metric' },
   background: { type: 'none', value: '' },
-  notes:   [],
-  feeds:   [],
-  iframes: [],
-  groups: [],
+  notes:      [],
+  feeds:      [],
+  iframes:    [],
+  countdowns: [],
+  calendars:  [],
+  groups:     [],
   widgetOrder: [],
   colSpan:     {},
 };
@@ -273,13 +277,15 @@ app.get('/api/config', (req, res) => {
 
 app.put('/api/config', (req, res) => {
   const cfg = loadConfig();
-  const { title, basePalette, darkMode, pingInterval, viewMode, showClock, weather, background, widgetOrder, colSpan } = req.body;
+  const { title, basePalette, darkMode, pingInterval, viewMode, showClock, sharpCorners, customCss, weather, background, widgetOrder, colSpan } = req.body;
   if (title        !== undefined) cfg.title        = String(title).trim().slice(0, 100);
   if (basePalette  !== undefined) cfg.basePalette  = String(basePalette);
   if (darkMode     !== undefined) cfg.darkMode     = Boolean(darkMode);
   if (pingInterval !== undefined) cfg.pingInterval = Math.max(0, Number(pingInterval) || 0);
   if (viewMode     !== undefined) cfg.viewMode     = ['grid', 'list'].includes(viewMode) ? viewMode : 'grid';
   if (showClock    !== undefined) cfg.showClock    = Boolean(showClock);
+  if (sharpCorners !== undefined) cfg.sharpCorners = Boolean(sharpCorners);
+  if (customCss    !== undefined) cfg.customCss    = String(customCss).slice(0, 50000);
   if (weather !== undefined && weather !== null && typeof weather === 'object') {
     cfg.weather = {
       apiKey: String(weather.apiKey || '').trim().slice(0, 300),
@@ -327,9 +333,13 @@ app.post('/api/config/import', (req, res) => {
       units:  ['metric', 'imperial'].includes(body.weather.units) ? body.weather.units : 'metric',
     } : current.weather,
     background: (body.background && typeof body.background === 'object') ? body.background : current.background,
-    notes:   Array.isArray(body.notes)   ? body.notes   : current.notes,
-    feeds:   Array.isArray(body.feeds)   ? body.feeds   : current.feeds,
-    iframes: Array.isArray(body.iframes) ? body.iframes : current.iframes,
+    sharpCorners: typeof body.sharpCorners === 'boolean' ? body.sharpCorners : current.sharpCorners,
+    customCss:   typeof body.customCss   === 'string'  ? body.customCss.slice(0, 50000) : current.customCss,
+    notes:      Array.isArray(body.notes)      ? body.notes      : current.notes,
+    feeds:      Array.isArray(body.feeds)      ? body.feeds      : current.feeds,
+    iframes:    Array.isArray(body.iframes)    ? body.iframes    : current.iframes,
+    countdowns: Array.isArray(body.countdowns) ? body.countdowns : current.countdowns,
+    calendars:  Array.isArray(body.calendars)  ? body.calendars  : current.calendars,
     groups:       body.groups,
     widgetOrder: Array.isArray(body.widgetOrder) ? body.widgetOrder : current.widgetOrder,
     colSpan:     (body.colSpan && typeof body.colSpan === 'object' && !Array.isArray(body.colSpan)) ? body.colSpan : current.colSpan,
@@ -468,7 +478,8 @@ app.post('/api/groups/:id/links', (req, res) => {
     ping:    req.body.ping !== false,
     pingUrl: String(req.body.pingUrl || '').trim().slice(0, 2000),
     pinned:  Boolean(req.body.pinned),
-    hotkey: String(req.body.hotkey || '').trim().slice(0,1).toLowerCase().replace(/[^a-z0-9]/g,''),
+    hotkey:  String(req.body.hotkey || '').trim().slice(0,1).toLowerCase().replace(/[^a-z0-9]/g,''),
+    tags:    Array.isArray(req.body.tags) ? req.body.tags.map(t => String(t).trim().slice(0, 30)).filter(Boolean).slice(0, 10) : [],
   };
   group.links.push(link);
   saveConfig(cfg);
@@ -504,6 +515,7 @@ app.put('/api/groups/:gid/links/:lid', (req, res) => {
   if (req.body.pingUrl    !== undefined) link.pingUrl    = String(req.body.pingUrl).trim().slice(0, 2000);
   if (req.body.pinned     !== undefined) link.pinned     = Boolean(req.body.pinned);
   if (req.body.hotkey     !== undefined) link.hotkey     = String(req.body.hotkey || '').trim().slice(0,1).toLowerCase().replace(/[^a-z0-9]/g,'');
+  if (req.body.tags       !== undefined) link.tags       = Array.isArray(req.body.tags) ? req.body.tags.map(t => String(t).trim().slice(0, 30)).filter(Boolean).slice(0, 10) : [];
   saveConfig(cfg);
   res.json(link);
 });
@@ -638,6 +650,137 @@ app.get('/api/rss', async (req, res) => {
     rssCache.set(url, result);
     res.json(result);
   } catch (err) { res.status(502).json({ error: err.message }); }
+});
+
+// ─── iCal proxy ───────────────────────────────────────────────────────────────
+
+const icalCache = new Map(); // url → { events, time }
+const ICAL_TTL  = 15 * 60 * 1000;
+
+function parseIcal(text) {
+  const events = [];
+  const blocks = text.match(/BEGIN:VEVENT[\s\S]*?END:VEVENT/g) || [];
+  for (const block of blocks) {
+    const prop = name => {
+      const m = block.match(new RegExp(`${name}(?:;[^:\\r\\n]*)?:([^\\r\\n]+)`));
+      return m ? m[1].trim() : '';
+    };
+    const unescape = s => s.replace(/\\n/g, '\n').replace(/\\,/g, ',').replace(/\\;/g, ';').replace(/\\\\/g, '\\');
+    const parseDate = s => {
+      const d = s.replace(/[TZ]/g, '');
+      return new Date(`${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)}T${d.slice(8,10)||'00'}:${d.slice(10,12)||'00'}:00`);
+    };
+    const summary = unescape(prop('SUMMARY'));
+    const dtstart = prop('DTSTART');
+    if (!summary || !dtstart) continue;
+    events.push({
+      summary,
+      date:        parseDate(dtstart).toISOString(),
+      description: unescape(prop('DESCRIPTION')).slice(0, 200),
+      location:    unescape(prop('LOCATION')).slice(0, 100),
+    });
+  }
+  return events.sort((a, b) => new Date(a.date) - new Date(b.date));
+}
+
+app.get('/api/ical', async (req, res) => {
+  const url = String(req.query.url || '').trim();
+  if (!url) return res.status(400).json({ error: 'url required' });
+  const cached = icalCache.get(url);
+  if (cached && Date.now() - cached.time < ICAL_TTL) return res.json(cached);
+  try {
+    const resp = await fetch(url, { signal: AbortSignal.timeout(8000), headers: { 'User-Agent': 'Tailboard/1.0' } });
+    if (!resp.ok) throw new Error(`upstream ${resp.status}`);
+    const events = parseIcal(await resp.text());
+    const result = { events, time: Date.now() };
+    icalCache.set(url, result);
+    res.json(result);
+  } catch (err) { res.status(502).json({ error: err.message }); }
+});
+
+// ─── Countdowns CRUD ──────────────────────────────────────────────────────────
+
+app.post('/api/countdowns', (req, res) => {
+  const cfg = loadConfig();
+  if (!req.body.targetDate) return res.status(400).json({ error: 'targetDate required' });
+  const cd = {
+    id:          randomUUID(),
+    title:       String(req.body.title       || 'Countdown').trim().slice(0, 80),
+    targetDate:  String(req.body.targetDate  || '').trim().slice(0, 30),
+    description: String(req.body.description || '').trim().slice(0, 200),
+  };
+  cfg.countdowns = cfg.countdowns || [];
+  cfg.countdowns.push(cd);
+  cfg.widgetOrder = [...(cfg.widgetOrder || []), cd.id];
+  saveConfig(cfg);
+  res.status(201).json(cd);
+});
+
+app.put('/api/countdowns/:id', (req, res) => {
+  const cfg = loadConfig();
+  cfg.countdowns = cfg.countdowns || [];
+  const cd = cfg.countdowns.find(c => c.id === req.params.id);
+  if (!cd) return res.status(404).json({ error: 'countdown not found' });
+  if (req.body.title       !== undefined) cd.title       = String(req.body.title).trim().slice(0, 80);
+  if (req.body.targetDate  !== undefined) cd.targetDate  = String(req.body.targetDate).trim().slice(0, 30);
+  if (req.body.description !== undefined) cd.description = String(req.body.description).trim().slice(0, 200);
+  saveConfig(cfg);
+  res.json(cd);
+});
+
+app.delete('/api/countdowns/:id', (req, res) => {
+  const cfg = loadConfig();
+  cfg.countdowns = cfg.countdowns || [];
+  const idx = cfg.countdowns.findIndex(c => c.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'countdown not found' });
+  cfg.countdowns.splice(idx, 1);
+  cfg.widgetOrder = (cfg.widgetOrder || []).filter(id => id !== req.params.id);
+  if (cfg.colSpan) delete cfg.colSpan[req.params.id];
+  saveConfig(cfg);
+  res.json({ ok: true });
+});
+
+// ─── Calendars CRUD ───────────────────────────────────────────────────────────
+
+app.post('/api/calendars', (req, res) => {
+  const cfg = loadConfig();
+  if (!req.body.url) return res.status(400).json({ error: 'url required' });
+  const cal = {
+    id:       randomUUID(),
+    title:    String(req.body.title || 'Calendar').trim().slice(0, 80),
+    url:      String(req.body.url   || '').trim().slice(0, 2000),
+    maxItems: Math.min(20, Math.max(1, Number(req.body.maxItems) || 10)),
+  };
+  cfg.calendars = cfg.calendars || [];
+  cfg.calendars.push(cal);
+  cfg.widgetOrder = [...(cfg.widgetOrder || []), cal.id];
+  saveConfig(cfg);
+  res.status(201).json(cal);
+});
+
+app.put('/api/calendars/:id', (req, res) => {
+  const cfg = loadConfig();
+  cfg.calendars = cfg.calendars || [];
+  const cal = cfg.calendars.find(c => c.id === req.params.id);
+  if (!cal) return res.status(404).json({ error: 'calendar not found' });
+  if (req.body.title    !== undefined) cal.title    = String(req.body.title).trim().slice(0, 80);
+  if (req.body.url      !== undefined) { icalCache.delete(cal.url); cal.url = String(req.body.url).trim().slice(0, 2000); }
+  if (req.body.maxItems !== undefined) cal.maxItems = Math.min(20, Math.max(1, Number(req.body.maxItems) || 10));
+  saveConfig(cfg);
+  res.json(cal);
+});
+
+app.delete('/api/calendars/:id', (req, res) => {
+  const cfg = loadConfig();
+  cfg.calendars = cfg.calendars || [];
+  const idx = cfg.calendars.findIndex(c => c.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'calendar not found' });
+  icalCache.delete(cfg.calendars[idx].url);
+  cfg.calendars.splice(idx, 1);
+  cfg.widgetOrder = (cfg.widgetOrder || []).filter(id => id !== req.params.id);
+  if (cfg.colSpan) delete cfg.colSpan[req.params.id];
+  saveConfig(cfg);
+  res.json({ ok: true });
 });
 
 // ─── Notes CRUD ───────────────────────────────────────────────────────────────
