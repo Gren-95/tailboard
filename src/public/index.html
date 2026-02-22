@@ -115,26 +115,35 @@ const ICON_BG_MAP = Object.fromEntries(
     </button>
     <h1 id="dashTitle" class="text-xl font-semibold tracking-tight cursor-pointer select-none" title="Click to rename"></h1>
   </div>
-  <div class="flex items-center gap-2">
-    <button id="searchBtn"
-      class="rounded-lg px-3 py-1.5 text-sm font-medium opacity-70 hover:opacity-100 transition-opacity"
-      title="Search links (Ctrl+K)">
-      Search <span class="opacity-50 text-xs">⌃K</span>
+  <div class="relative">
+    <button id="menuBtn" title="Menu"
+      class="rounded-lg p-2 opacity-70 hover:opacity-100 transition-opacity">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
+      </svg>
     </button>
-    <button id="settingsBtn"
-      class="rounded-lg px-3 py-1.5 text-sm font-medium opacity-70 hover:opacity-100 transition-opacity"
-      title="Dashboard settings">
-      ⚙ Settings
-    </button>
-    <button id="editToggle"
-      class="rounded-lg px-4 py-1.5 text-sm font-semibold border transition-all">
-      ✏ Edit
-    </button>
-    <a id="logoutBtn" href="/logout"
-      class="hidden rounded-lg px-3 py-1.5 text-sm font-medium opacity-60 hover:opacity-100 transition-opacity"
-      title="Sign out">
-      Sign out
-    </a>
+    <div id="menuDropdown"
+      class="hidden absolute right-0 top-full mt-1 w-52 rounded-xl shadow-xl overflow-hidden border bg-white dark:bg-stone-800 border-stone-200 dark:border-stone-700 py-1 z-50">
+      <button id="menuSearch"
+        class="w-full flex items-center justify-between gap-2 px-4 py-2.5 text-sm text-left text-stone-700 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-700/60 transition-colors">
+        <span>Search</span>
+        <kbd class="text-xs font-mono opacity-40">⌃K</kbd>
+      </button>
+      <button id="menuSettings"
+        class="w-full text-left px-4 py-2.5 text-sm text-stone-700 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-700/60 transition-colors">
+        Settings
+      </button>
+      <hr class="my-1 border-stone-200 dark:border-stone-700">
+      <button id="menuEdit"
+        class="w-full text-left px-4 py-2.5 text-sm text-stone-700 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-700/60 transition-colors">
+        Edit mode
+      </button>
+      <hr id="menuLogoutSep" class="hidden my-1 border-stone-200 dark:border-stone-700">
+      <a id="menuLogout" href="/logout"
+        class="hidden block px-4 py-2.5 text-sm text-stone-500 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-700/60 transition-colors">
+        Sign out
+      </a>
+    </div>
   </div>
 </header>
 
@@ -189,6 +198,7 @@ let statusMap = {};
 // Search overlay
 let searchOpen = false;
 let selectedSearchIdx = -1;
+let menuOpen = false;
 
 // ─── API helpers ─────────────────────────────────────────────────────────────
 
@@ -267,12 +277,16 @@ function applyBase(palette) {
   const topbar = document.getElementById('topbar');
   topbar.className = `sticky top-0 z-30 flex items-center justify-between px-6 py-3 shadow-sm border-b transition-colors ${t.bar} ${t.text}`;
 
-  const et = document.getElementById('editToggle');
-  et.className = `rounded-lg px-4 py-1.5 text-sm font-semibold border transition-all ${
-    state.editMode
-      ? 'bg-white/20 border-white/50'
-      : 'border-current opacity-60 hover:opacity-100'
-  }`;
+  const me = document.getElementById('menuEdit');
+  if (me) {
+    if (state.editMode) {
+      me.textContent = '✓ Edit mode';
+      me.className = 'w-full text-left px-4 py-2.5 text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-stone-100 dark:hover:bg-stone-700/60 transition-colors';
+    } else {
+      me.textContent = 'Edit mode';
+      me.className = 'w-full text-left px-4 py-2.5 text-sm text-stone-700 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-700/60 transition-colors';
+    }
+  }
 }
 
 // ─── Render ──────────────────────────────────────────────────────────────────
@@ -687,6 +701,7 @@ document.getElementById('modalOverlay').addEventListener('click', e => {
 
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
+    if (menuOpen) { closeMenu(); return; }
     if (searchOpen) closeSearch(); else closeModal();
     return;
   }
@@ -1155,6 +1170,11 @@ function closeSearch() {
   document.getElementById('searchOverlay').classList.add('hidden');
 }
 
+function closeMenu() {
+  menuOpen = false;
+  document.getElementById('menuDropdown').classList.add('hidden');
+}
+
 function renderSearchResults(query) {
   const list  = document.getElementById('searchResults');
   const count = document.getElementById('searchCount');
@@ -1324,9 +1344,30 @@ document.getElementById('themeToggle').addEventListener('click', async () => {
   await api('PUT', '/api/config', { darkMode: dark });
 });
 
-document.getElementById('editToggle').addEventListener('click', () => {
+document.getElementById('menuBtn').addEventListener('click', e => {
+  e.stopPropagation();
+  menuOpen = !menuOpen;
+  document.getElementById('menuDropdown').classList.toggle('hidden', !menuOpen);
+});
+
+document.getElementById('menuSearch').addEventListener('click', () => {
+  closeMenu();
+  openSearch();
+});
+
+document.getElementById('menuSettings').addEventListener('click', () => {
+  closeMenu();
+  openSettingsModal();
+});
+
+document.getElementById('menuEdit').addEventListener('click', () => {
+  closeMenu();
   state.editMode = !state.editMode;
   render();
+});
+
+document.addEventListener('click', e => {
+  if (menuOpen && !document.getElementById('menuBtn').contains(e.target)) closeMenu();
 });
 
 document.getElementById('searchOverlay').addEventListener('click', e => {
@@ -1337,17 +1378,18 @@ document.getElementById('searchInput').addEventListener('input', e => {
   renderSearchResults(e.target.value);
 });
 
-document.getElementById('searchBtn').addEventListener('click', openSearch);
-document.getElementById('settingsBtn').addEventListener('click', openSettingsModal);
 document.getElementById('dashTitle').addEventListener('click', openSettingsModal);
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 
 reload();
 
-// Show logout button if auth is enabled
+// Show sign-out in menu if auth is enabled
 api('GET', '/api/auth').then(({ enabled }) => {
-  if (enabled) document.getElementById('logoutBtn').classList.remove('hidden');
+  if (enabled) {
+    document.getElementById('menuLogout').classList.remove('hidden');
+    document.getElementById('menuLogoutSep').classList.remove('hidden');
+  }
 }).catch(() => {});
 </script>
 

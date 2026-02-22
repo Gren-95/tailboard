@@ -319,7 +319,7 @@ app.get(['/favicon.ico', '/api/favicon'], (req, res) => {
   res.sendFile(FAVICON_FILE);
 });
 
-app.post('/api/favicon', express.raw({ type: /^image\//, limit: '2mb' }), (req, res) => {
+app.post('/api/favicon', express.raw({ type: 'image/*', limit: '2mb' }), (req, res) => {
   if (!req.body || !req.body.length) return res.status(400).json({ error: 'no image data' });
   const mime = (req.headers['content-type'] || 'image/x-icon').split(';')[0].trim();
   fs.mkdirSync(path.dirname(FAVICON_FILE), { recursive: true });
