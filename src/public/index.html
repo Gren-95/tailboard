@@ -904,6 +904,8 @@ function renderClockCard() {
 // ─── Weather ──────────────────────────────────────────────────────────────────
 
 async function fetchWeather() {
+  const el = document.getElementById('clockCardWeather');
+  if (el) { el.innerHTML = ''; el.appendChild(mkCardSpinner()); }
   try {
     const res = await fetch('/api/weather');
     if (res.status === 204) { renderWeatherCard(null); return; }
@@ -1025,6 +1027,15 @@ function mkBtn(label, title, cls, handler) {
   btn.className = cls;
   btn.addEventListener('click', handler);
   return btn;
+}
+
+function mkCardSpinner() {
+  const wrap = document.createElement('div');
+  wrap.className = 'flex items-center justify-center py-6';
+  const ring = document.createElement('div');
+  ring.className = 'w-5 h-5 rounded-full border-2 border-stone-200 dark:border-stone-700 border-t-indigo-500 animate-spin';
+  wrap.appendChild(ring);
+  return wrap;
 }
 
 function mkPlaceholderIcon(colorClass) {
@@ -2352,7 +2363,7 @@ function renderFeedCard(feed) {
   const body = document.createElement('div');
   body.id = `rss-${feed.id}`;
   body.className = `px-4 py-3 text-xs ${FIXED.sub}`;
-  body.textContent = 'Loading…';
+  body.appendChild(mkCardSpinner());
   card.appendChild(body);
   return card;
 }
@@ -2417,7 +2428,8 @@ function renderIframeCard(iframe) {
 async function fetchRss(feed) {
   const el = document.getElementById(`rss-${feed.id}`);
   if (!el) return;
-  el.innerHTML = `<span class="${FIXED.sub}">Loading…</span>`;
+  el.innerHTML = '';
+  el.appendChild(mkCardSpinner());
   try {
     const res = await fetch(`/api/rss?url=${encodeURIComponent(feed.url)}`);
     if (!res.ok) throw new Error(res.status);
@@ -2811,7 +2823,8 @@ async function fetchIcal(cal) {
   if (!body) return;
   const cached = icalDataCache.get(cal.id);
   if (cached) { renderIcalEvents(body, cached.events, cal.maxItems); return; }
-  body.textContent = 'Loading…';
+  body.innerHTML = '';
+  body.appendChild(mkCardSpinner());
   try {
     const data = await api('GET', `/api/ical?url=${encodeURIComponent(cal.url)}`);
     icalDataCache.set(cal.id, data);
@@ -2866,7 +2879,7 @@ function renderCalendarCard(cal) {
   const body = document.createElement('div');
   body.id = `ical-${cal.id}`;
   body.className = `text-xs ${b.sub} px-4 py-3`;
-  body.textContent = 'Loading…';
+  body.appendChild(mkCardSpinner());
   card.appendChild(body);
   return card;
 }
