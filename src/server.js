@@ -150,6 +150,10 @@ const DEFAULT_CONFIG = {
   viewMode: 'grid',
   showClock: false,
   weather: { apiKey: '', city: '', units: 'metric' },
+  background: { type: 'none', value: '' },
+  notes:   [],
+  feeds:   [],
+  iframes: [],
   groups: [],
 };
 
@@ -184,6 +188,9 @@ const statusCache = new Map();
 let weatherCache     = null;
 let weatherCacheTime = 0;
 const WEATHER_TTL    = 10 * 60 * 1000; // 10 minutes
+
+const rssCache = new Map(); // url → { items, time }
+const RSS_TTL  = 15 * 60 * 1000;
 
 /**
  * Ping a URL via HEAD using node:http/https directly so we can set
@@ -264,7 +271,7 @@ app.get('/api/config', (req, res) => {
 
 app.put('/api/config', (req, res) => {
   const cfg = loadConfig();
-  const { title, basePalette, darkMode, pingInterval, viewMode, showClock, weather } = req.body;
+  const { title, basePalette, darkMode, pingInterval, viewMode, showClock, weather, background } = req.body;
   if (title        !== undefined) cfg.title        = String(title).trim().slice(0, 100);
   if (basePalette  !== undefined) cfg.basePalette  = String(basePalette);
   if (darkMode     !== undefined) cfg.darkMode     = Boolean(darkMode);
@@ -278,6 +285,12 @@ app.put('/api/config', (req, res) => {
       units:  ['metric', 'imperial'].includes(weather.units) ? weather.units : 'metric',
     };
     weatherCache = null; // invalidate on config change
+  }
+  if (background !== undefined && background !== null && typeof background === 'object') {
+    cfg.background = {
+      type:  ['none','gradient','image'].includes(background.type) ? background.type : 'none',
+      value: String(background.value || '').trim().slice(0, 500),
+    };
   }
   saveConfig(cfg);
   res.json(cfg);
@@ -309,6 +322,10 @@ app.post('/api/config/import', (req, res) => {
       city:   String(body.weather.city   || '').trim().slice(0, 100),
       units:  ['metric', 'imperial'].includes(body.weather.units) ? body.weather.units : 'metric',
     } : current.weather,
+    background: (body.background && typeof body.background === 'object') ? body.background : current.background,
+    notes:   Array.isArray(body.notes)   ? body.notes   : current.notes,
+    feeds:   Array.isArray(body.feeds)   ? body.feeds   : current.feeds,
+    iframes: Array.isArray(body.iframes) ? body.iframes : current.iframes,
     groups:       body.groups,
   };
   saveConfig(merged);
@@ -442,6 +459,7 @@ app.post('/api/groups/:id/links', (req, res) => {
     ping:    req.body.ping !== false,
     pingUrl: String(req.body.pingUrl || '').trim().slice(0, 2000),
     pinned:  Boolean(req.body.pinned),
+    hotkey: String(req.body.hotkey || '').trim().slice(0,1).toLowerCase().replace(/[^a-z0-9]/g,''),
   };
   group.links.push(link);
   saveConfig(cfg);
@@ -476,6 +494,7 @@ app.put('/api/groups/:gid/links/:lid', (req, res) => {
   if (req.body.ping       !== undefined) link.ping       = req.body.ping !== false;
   if (req.body.pingUrl    !== undefined) link.pingUrl    = String(req.body.pingUrl).trim().slice(0, 2000);
   if (req.body.pinned     !== undefined) link.pinned     = Boolean(req.body.pinned);
+  if (req.body.hotkey     !== undefined) link.hotkey     = String(req.body.hotkey || '').trim().slice(0,1).toLowerCase().replace(/[^a-z0-9]/g,'');
   saveConfig(cfg);
   res.json(link);
 });
@@ -556,6 +575,178 @@ app.get('/api/weather', async (req, res) => {
   } catch (err) {
     res.status(502).json({ error: err.message });
   }
+});
+
+// ─── RSS parser ───────────────────────────────────────────────────────────────
+
+function parseRss(xml) {
+  function cdata(s) { return s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').trim(); }
+  function tag(t, s)  { const m = s.match(new RegExp(`<${t}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${t}>`)); return m ? cdata(m[1]) : ''; }
+  function attr(t, a, s) { const m = s.match(new RegExp(`<${t}[^>]+${a}=["']([^"']+)["']`)); return m ? m[1] : ''; }
+  const isAtom = /<feed[\s>]/.test(xml);
+  const rx = isAtom ? /<entry>([\s\S]*?)<\/entry>/g : /<item>([\s\S]*?)<\/item>/g;
+  const items = [];
+  for (const [, chunk] of xml.matchAll(rx)) {
+    const title = tag('title', chunk);
+    const link  = isAtom ? (attr('link','href',chunk) || tag('link',chunk)) : (tag('link',chunk) || tag('guid',chunk));
+    const date  = isAtom ? (tag('published',chunk) || tag('updated',chunk)) : tag('pubDate',chunk);
+    if (title && link) items.push({ title, link: link.trim(), date });
+  }
+  return items;
+}
+
+// ─── PWA manifest ─────────────────────────────────────────────────────────────
+
+const PALETTE_HEX = { stone:'#57534e', gray:'#4b5563', zinc:'#52525b', slate:'#475569',
+  neutral:'#525252', red:'#dc2626', orange:'#f97316', amber:'#d97706', yellow:'#ca8a04',
+  lime:'#65a30d', green:'#16a34a', emerald:'#059669', teal:'#0d9488', cyan:'#0891b2',
+  sky:'#0284c7', blue:'#2563eb', indigo:'#4f46e5', violet:'#7c3aed', purple:'#9333ea',
+  fuchsia:'#a21caf', pink:'#db2777', rose:'#e11d48' };
+
+app.get('/manifest.json', (req, res) => {
+  const cfg = loadConfig();
+  res.json({
+    name: cfg.title || 'Tailboard', short_name: cfg.title || 'Tailboard',
+    start_url: '/', display: 'standalone',
+    theme_color: PALETTE_HEX[cfg.basePalette] || '#57534e',
+    background_color: cfg.darkMode ? '#0c0a09' : '#ffffff',
+    icons: [{ src: '/api/favicon', sizes: '512x512', type: 'image/png', purpose: 'any maskable' }],
+  });
+});
+
+// ─── RSS proxy ────────────────────────────────────────────────────────────────
+
+app.get('/api/rss', async (req, res) => {
+  const url = String(req.query.url || '').trim();
+  if (!url) return res.status(400).json({ error: 'url required' });
+  const cached = rssCache.get(url);
+  if (cached && Date.now() - cached.time < RSS_TTL) return res.json(cached);
+  try {
+    const resp = await fetch(url, { signal: AbortSignal.timeout(8000), headers: { 'User-Agent': 'Tailboard/1.0' } });
+    if (!resp.ok) throw new Error(`upstream ${resp.status}`);
+    const items = parseRss(await resp.text()).slice(0, 10);
+    const result = { items, time: Date.now() };
+    rssCache.set(url, result);
+    res.json(result);
+  } catch (err) { res.status(502).json({ error: err.message }); }
+});
+
+// ─── Notes CRUD ───────────────────────────────────────────────────────────────
+
+app.post('/api/notes', (req, res) => {
+  const cfg = loadConfig();
+  const note = {
+    id: randomUUID(),
+    title: String(req.body.title || 'Notes').trim().slice(0, 80),
+    content: String(req.body.content || '').trim().slice(0, 10000),
+  };
+  cfg.notes = cfg.notes || [];
+  cfg.notes.push(note);
+  saveConfig(cfg);
+  res.status(201).json(note);
+});
+
+app.put('/api/notes/:id', (req, res) => {
+  const cfg = loadConfig();
+  cfg.notes = cfg.notes || [];
+  const note = cfg.notes.find(n => n.id === req.params.id);
+  if (!note) return res.status(404).json({ error: 'note not found' });
+  if (req.body.title   !== undefined) note.title   = String(req.body.title).trim().slice(0, 80);
+  if (req.body.content !== undefined) note.content = String(req.body.content).trim().slice(0, 10000);
+  saveConfig(cfg);
+  res.json(note);
+});
+
+app.delete('/api/notes/:id', (req, res) => {
+  const cfg = loadConfig();
+  cfg.notes = cfg.notes || [];
+  const idx = cfg.notes.findIndex(n => n.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'note not found' });
+  cfg.notes.splice(idx, 1);
+  saveConfig(cfg);
+  res.json({ ok: true });
+});
+
+// ─── Feeds CRUD ───────────────────────────────────────────────────────────────
+
+app.post('/api/feeds', (req, res) => {
+  const cfg = loadConfig();
+  const feed = {
+    id: randomUUID(),
+    title: String(req.body.title || 'Feed').trim().slice(0, 80),
+    url: String(req.body.url || '').trim().slice(0, 2000),
+    maxItems: Math.min(20, Math.max(1, Number(req.body.maxItems) || 5)),
+  };
+  if (!feed.url) return res.status(400).json({ error: 'url required' });
+  cfg.feeds = cfg.feeds || [];
+  cfg.feeds.push(feed);
+  saveConfig(cfg);
+  res.status(201).json(feed);
+});
+
+app.put('/api/feeds/:id', (req, res) => {
+  const cfg = loadConfig();
+  cfg.feeds = cfg.feeds || [];
+  const feed = cfg.feeds.find(f => f.id === req.params.id);
+  if (!feed) return res.status(404).json({ error: 'feed not found' });
+  if (req.body.title    !== undefined) feed.title    = String(req.body.title).trim().slice(0, 80);
+  if (req.body.url      !== undefined) {
+    rssCache.delete(feed.url);
+    feed.url = String(req.body.url).trim().slice(0, 2000);
+  }
+  if (req.body.maxItems !== undefined) feed.maxItems = Math.min(20, Math.max(1, Number(req.body.maxItems) || 5));
+  saveConfig(cfg);
+  res.json(feed);
+});
+
+app.delete('/api/feeds/:id', (req, res) => {
+  const cfg = loadConfig();
+  cfg.feeds = cfg.feeds || [];
+  const idx = cfg.feeds.findIndex(f => f.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'feed not found' });
+  rssCache.delete(cfg.feeds[idx].url);
+  cfg.feeds.splice(idx, 1);
+  saveConfig(cfg);
+  res.json({ ok: true });
+});
+
+// ─── iFrames CRUD ─────────────────────────────────────────────────────────────
+
+app.post('/api/iframes', (req, res) => {
+  const cfg = loadConfig();
+  const iframe = {
+    id: randomUUID(),
+    title: String(req.body.title || 'Embed').trim().slice(0, 80),
+    url: String(req.body.url || '').trim().slice(0, 2000),
+    height: Math.min(2000, Math.max(100, Number(req.body.height) || 300)),
+  };
+  if (!iframe.url) return res.status(400).json({ error: 'url required' });
+  cfg.iframes = cfg.iframes || [];
+  cfg.iframes.push(iframe);
+  saveConfig(cfg);
+  res.status(201).json(iframe);
+});
+
+app.put('/api/iframes/:id', (req, res) => {
+  const cfg = loadConfig();
+  cfg.iframes = cfg.iframes || [];
+  const iframe = cfg.iframes.find(i => i.id === req.params.id);
+  if (!iframe) return res.status(404).json({ error: 'iframe not found' });
+  if (req.body.title  !== undefined) iframe.title  = String(req.body.title).trim().slice(0, 80);
+  if (req.body.url    !== undefined) iframe.url    = String(req.body.url).trim().slice(0, 2000);
+  if (req.body.height !== undefined) iframe.height = Math.min(2000, Math.max(100, Number(req.body.height) || 300));
+  saveConfig(cfg);
+  res.json(iframe);
+});
+
+app.delete('/api/iframes/:id', (req, res) => {
+  const cfg = loadConfig();
+  cfg.iframes = cfg.iframes || [];
+  const idx = cfg.iframes.findIndex(i => i.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'iframe not found' });
+  cfg.iframes.splice(idx, 1);
+  saveConfig(cfg);
+  res.json({ ok: true });
 });
 
 // ─── SPA fallback ─────────────────────────────────────────────────────────────

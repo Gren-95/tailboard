@@ -6,6 +6,10 @@
   <title>Tailboard</title>
   <link rel="stylesheet" href="/style.css" />
   <link rel="icon" id="faviconLink" href="/api/favicon">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" id="metaThemeColor" content="#57534e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Tailboard">
   <style>
     /* Drag handle cursor — also declared here so non-Tailwind browsers cover it */
     .drag-handle { cursor: grab; }
@@ -82,6 +86,13 @@ const ACCENT = {
 
 const PALETTES = Object.keys(TOPBAR);
 
+// PALETTE_HEX — hex values for theme-color meta and manifest (mirrors server)
+const PALETTE_HEX = { stone:'#57534e', gray:'#4b5563', zinc:'#52525b', slate:'#475569',
+  neutral:'#525252', red:'#dc2626', orange:'#f97316', amber:'#d97706', yellow:'#ca8a04',
+  lime:'#65a30d', green:'#16a34a', emerald:'#059669', teal:'#0d9488', cyan:'#0891b2',
+  sky:'#0284c7', blue:'#2563eb', indigo:'#4f46e5', violet:'#7c3aed', purple:'#9333ea',
+  fuchsia:'#a21caf', pink:'#db2777', rose:'#e11d48' };
+
 // ICON_BG — squircle background options for link icons
 const ICON_BG_OPTIONS = [
   { key: 'none',    label: 'None',    hex: null        },
@@ -106,6 +117,7 @@ const ICON_BG_MAP = Object.fromEntries(
 const WIDGET = {
   time: 'text-4xl font-bold tabular-nums leading-none',
   date: 'text-sm mt-1',
+  preWrap: 'whitespace-pre-wrap break-words',
 };
 </script>
 
@@ -143,6 +155,10 @@ const WIDGET = {
       <button id="menuEdit"
         class="w-full text-left px-4 py-2.5 text-sm text-stone-700 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-700/60 transition-colors">
         Edit mode
+      </button>
+      <button id="menuShortcuts"
+        class="w-full text-left px-4 py-2.5 text-sm text-stone-700 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-700/60 transition-colors">
+        ⌨ Shortcuts
       </button>
       <button id="menuViewToggle"
         class="w-full text-left px-4 py-2.5 text-sm text-stone-700 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-700/60 transition-colors">
@@ -316,6 +332,8 @@ function applyBase(palette) {
   const ct = document.getElementById('menuClockToggle');
   if (ct) ct.textContent = state.config && state.config.showClock ? '🕐 Hide clock' : '🕐 Show clock';
 
+  const meta = document.getElementById('metaThemeColor');
+  if (meta) meta.content = PALETTE_HEX[palette] || '#57534e';
 }
 
 // ─── Render ──────────────────────────────────────────────────────────────────
@@ -339,6 +357,10 @@ function render() {
   if (cfg.showClock) {
     container.appendChild(renderClockCard());
   }
+
+  (cfg.notes   || []).forEach(n => container.appendChild(renderNoteCard(n)));
+  (cfg.feeds   || []).forEach(f => container.appendChild(renderFeedCard(f)));
+  (cfg.iframes || []).forEach(i => container.appendChild(renderIframeCard(i)));
 
   cfg.groups.forEach((group) => {
     const acc = ACCENT[group.accent] || ACCENT.slate;
@@ -562,6 +584,12 @@ function render() {
         const nameEl = document.createElement('div');
         nameEl.className = `text-sm font-medium truncate ${b.text}`;
         nameEl.textContent = link.name;
+        if (link.hotkey) {
+          const badge = document.createElement('span');
+          badge.className = 'ml-1 text-xs font-mono opacity-40 flex-shrink-0';
+          badge.textContent = `[${link.hotkey.toUpperCase()}]`;
+          nameEl.appendChild(badge);
+        }
         textWrap.appendChild(nameEl);
         if (link.description && !isList) {
           const desc = document.createElement('div');
@@ -617,6 +645,13 @@ function render() {
     container.appendChild(section);
   });
 
+  // Add widget buttons (edit mode)
+  if (state.editMode) {
+    container.appendChild(mkAddWidgetBtn('+ Add note',   () => openNoteModal()));
+    container.appendChild(mkAddWidgetBtn('+ Add feed',   () => openFeedModal()));
+    container.appendChild(mkAddWidgetBtn('+ Add embed',  () => openIframeModal()));
+  }
+
   // Add Group button (edit mode)
   if (state.editMode) {
     const addGroupBtn = document.createElement('button');
@@ -627,6 +662,8 @@ function render() {
   }
 
   renderPinned();
+  applyBackground(cfg.background);
+  (cfg.feeds || []).forEach(f => fetchRss(f));
 
   if (cfg.showClock) {
     requestAnimationFrame(updateClock);
@@ -983,6 +1020,15 @@ document.addEventListener('keydown', e => {
       return;
     }
   }
+  if (!searchOpen && !document.querySelector('#modalOverlay:not(.hidden)') && !state.editMode) {
+    const key = e.key.toLowerCase();
+    const allLinks = (state.config?.groups || []).flatMap(g => g.links);
+    const match = allLinks.find(l => l.hotkey && l.hotkey === key);
+    if (match && !['input','textarea','select'].includes(document.activeElement?.tagName?.toLowerCase())) {
+      e.preventDefault();
+      window.open(match.url, '_blank', 'noopener');
+    }
+  }
   if (searchOpen) {
     if (e.key === 'ArrowDown') { e.preventDefault(); moveSearchSelection(1); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); moveSearchSelection(-1); }
@@ -1226,6 +1272,23 @@ function openLinkModal(groupId, link) {
   pinnedRow.appendChild(pinnedLabelEl);
   wrap.appendChild(pinnedRow);
 
+  // Hotkey
+  const hotkeyLabel = mkLabel('Hotkey (optional)', b.sub);
+  hotkeyLabel.className += ' mt-3 block';
+  wrap.appendChild(hotkeyLabel);
+  const hotkeyInput = mkInput(link ? (link.hotkey || '') : '', 'e.g. p', b);
+  hotkeyInput.maxLength = 1;
+  hotkeyInput.pattern = '[a-z0-9]';
+  hotkeyInput.style.width = '4rem';
+  hotkeyInput.addEventListener('input', () => {
+    hotkeyInput.value = hotkeyInput.value.toLowerCase().replace(/[^a-z0-9]/g, '');
+  });
+  wrap.appendChild(hotkeyInput);
+  const hotkeyHint = document.createElement('p');
+  hotkeyHint.className = `text-xs mt-1 mb-1 ${b.sub}`;
+  hotkeyHint.textContent = 'Single letter/digit. Press that key on the dashboard to open the link.';
+  wrap.appendChild(hotkeyHint);
+
   // Group picker — lets user move an existing link to a different group
   let targetGroupId = groupId;
   if (state.config.groups.length > 1) {
@@ -1272,6 +1335,7 @@ function openLinkModal(groupId, link) {
       ping:    pingCheck.checked,
       pingUrl: pingCheck.checked ? pingUrlInput.value.trim() : '',
       pinned:  pinnedCheck.checked,
+      hotkey: hotkeyInput.value.trim().slice(0,1).toLowerCase().replace(/[^a-z0-9]/g,''),
     };
     if (link) {
       if (targetGroupId !== groupId) {
@@ -1367,6 +1431,124 @@ function openSettingsModal() {
     piRow.appendChild(btn);
   });
   wrap.appendChild(piRow);
+
+  // ── Background ────────────────────────────────────────────────────────────────
+  const bgSep = document.createElement('hr');
+  bgSep.className = 'my-5 border-stone-200 dark:border-stone-700';
+  wrap.appendChild(bgSep);
+
+  const bgTitle = document.createElement('p');
+  bgTitle.className = `text-xs font-semibold uppercase tracking-wider mb-3 ${b.sub}`;
+  bgTitle.textContent = 'Background';
+  wrap.appendChild(bgTitle);
+
+  let bgType  = (cfg.background && cfg.background.type)  || 'none';
+  let bgValue = (cfg.background && cfg.background.value) || '';
+
+  const bgTypeRow = document.createElement('div');
+  bgTypeRow.className = 'flex gap-2 mb-3';
+  const bgTypePillBase   = 'px-3 py-1.5 rounded-lg text-sm border transition-colors';
+  const bgTypePillActive = 'bg-indigo-600 text-white border-indigo-600';
+  const bgTypePillIdle   = `border-stone-300 dark:border-stone-600 ${b.text} hover:bg-stone-100 dark:hover:bg-stone-700`;
+
+  // Gradient sub-section
+  const bgGradientSection = document.createElement('div');
+  bgGradientSection.className = bgType === 'gradient' ? 'mb-2' : 'hidden mb-2';
+
+  const gradParts = bgValue.includes(',') ? bgValue.split(',') : ['#0f172a', '#1e293b'];
+  let gradC1 = gradParts[0] || '#0f172a';
+  let gradC2 = gradParts[1] || '#1e293b';
+
+  const gradPresets = [
+    { label: 'Midnight', value: '#0f172a,#1e293b' },
+    { label: 'Forest',   value: '#052e16,#14532d' },
+    { label: 'Ember',    value: '#1c0a00,#431407' },
+    { label: 'Space',    value: '#09090b,#18181b' },
+  ];
+  const presetRow = document.createElement('div');
+  presetRow.className = 'flex gap-2 flex-wrap mb-3';
+
+  let c1Input, c2Input; // declared here so preset handler can reference them
+
+  gradPresets.forEach(preset => {
+    const [p1, p2] = preset.value.split(',');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = preset.label;
+    btn.className = 'px-2.5 py-1 text-xs rounded-lg text-white font-medium border-0 transition-opacity hover:opacity-90';
+    btn.style.background = `linear-gradient(135deg,${p1},${p2})`;
+    btn.addEventListener('click', () => {
+      gradC1 = p1; gradC2 = p2;
+      bgValue = preset.value;
+      if (c1Input) c1Input.value = gradC1;
+      if (c2Input) c2Input.value = gradC2;
+    });
+    presetRow.appendChild(btn);
+  });
+  bgGradientSection.appendChild(presetRow);
+
+  const colorPickerRow = document.createElement('div');
+  colorPickerRow.className = 'flex items-center gap-3';
+
+  const c1Label = document.createElement('label');
+  c1Label.className = `text-xs ${b.sub}`;
+  c1Label.textContent = 'Color 1';
+  c1Input = document.createElement('input');
+  c1Input.type = 'color';
+  c1Input.value = gradC1;
+  c1Input.className = 'w-8 h-8 rounded cursor-pointer border border-stone-300 dark:border-stone-600';
+  c1Input.addEventListener('input', () => { gradC1 = c1Input.value; bgValue = `${gradC1},${gradC2}`; });
+
+  const c2Label = document.createElement('label');
+  c2Label.className = `text-xs ${b.sub}`;
+  c2Label.textContent = 'Color 2';
+  c2Input = document.createElement('input');
+  c2Input.type = 'color';
+  c2Input.value = gradC2;
+  c2Input.className = 'w-8 h-8 rounded cursor-pointer border border-stone-300 dark:border-stone-600';
+  c2Input.addEventListener('input', () => { gradC2 = c2Input.value; bgValue = `${gradC1},${gradC2}`; });
+
+  colorPickerRow.appendChild(c1Label);
+  colorPickerRow.appendChild(c1Input);
+  colorPickerRow.appendChild(c2Label);
+  colorPickerRow.appendChild(c2Input);
+  bgGradientSection.appendChild(colorPickerRow);
+
+  // Image sub-section
+  const bgImageSection = document.createElement('div');
+  bgImageSection.className = bgType === 'image' ? 'mb-2' : 'hidden mb-2';
+  const bgImageInput = mkInput(bgType === 'image' ? bgValue : '', 'https://example.com/background.jpg', b);
+  bgImageInput.addEventListener('input', () => { bgValue = bgImageInput.value.trim(); });
+  bgImageSection.appendChild(bgImageInput);
+
+  // Type pills (built after sub-sections so toggle handler can reference them)
+  [
+    { value: 'none',     label: 'None'      },
+    { value: 'gradient', label: 'Gradient'  },
+    { value: 'image',    label: 'Image URL' },
+  ].forEach(opt => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = opt.label;
+    btn.dataset.bgType = opt.value;
+    btn.className = `${bgTypePillBase} ${opt.value === bgType ? bgTypePillActive : bgTypePillIdle}`;
+    btn.addEventListener('click', () => {
+      bgType = opt.value;
+      bgTypeRow.querySelectorAll('button').forEach(b2 => {
+        b2.className = `${bgTypePillBase} ${b2.dataset.bgType === bgType ? bgTypePillActive : bgTypePillIdle}`;
+      });
+      bgGradientSection.className = bgType === 'gradient' ? 'mb-2' : 'hidden mb-2';
+      bgImageSection.className    = bgType === 'image'    ? 'mb-2' : 'hidden mb-2';
+      if (bgType === 'gradient') bgValue = `${gradC1},${gradC2}`;
+      else if (bgType === 'image') bgValue = bgImageInput.value.trim();
+      else bgValue = '';
+    });
+    bgTypeRow.appendChild(btn);
+  });
+
+  wrap.appendChild(bgTypeRow);
+  wrap.appendChild(bgGradientSection);
+  wrap.appendChild(bgImageSection);
 
   // ── Favicon ──────────────────────────────────────────────────────────────────
   const favSep = document.createElement('hr');
@@ -1494,7 +1676,12 @@ function openSettingsModal() {
   saveBtn.className = 'px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-500 transition-colors';
   saveBtn.onclick = async () => {
     const newTitle = titleInput.value.trim() || 'My Dashboard';
-    await api('PUT', '/api/config', { title: newTitle, basePalette: selectedBase, pingInterval: selectedPingInterval });
+    await api('PUT', '/api/config', {
+      title: newTitle,
+      basePalette: selectedBase,
+      pingInterval: selectedPingInterval,
+      background: { type: bgType, value: bgValue },
+    });
     closeModal();
     await reload();
   };
@@ -1687,6 +1874,554 @@ function mkInput(value, placeholder, b) {
   return el;
 }
 
+// ─── Background ───────────────────────────────────────────────────────────────
+
+function applyBackground(bg) {
+  document.body.style.backgroundImage = '';
+  document.body.style.background = '';
+  if (!bg || bg.type === 'none') return;
+  if (bg.type === 'gradient') {
+    const parts = (bg.value || '#1e293b,#0f172a').split(',');
+    const c1 = parts[0] || '#1e293b';
+    const c2 = parts[1] || '#0f172a';
+    document.body.style.background = `linear-gradient(135deg,${c1},${c2})`;
+  } else if (bg.type === 'image' && bg.value) {
+    Object.assign(document.body.style, {
+      backgroundImage: `url(${bg.value})`,
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+      backgroundAttachment: 'fixed',
+    });
+  }
+}
+
+// ─── Add-widget button helper ─────────────────────────────────────────────────
+
+function mkAddWidgetBtn(label, onClick) {
+  const btn = document.createElement('button');
+  btn.className = `rounded-xl border-2 border-dashed border-stone-300 dark:border-stone-600 p-4 text-sm font-medium ${FIXED.sub} hover:bg-black/5 dark:hover:bg-white/5 transition-colors w-full`;
+  btn.textContent = label;
+  btn.onclick = onClick;
+  return btn;
+}
+
+// ─── Markdown helpers (no deps) ───────────────────────────────────────────────
+
+function mdInline(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g,'<em>$1</em>')
+    .replace(/`(.+?)`/g,'<code class="font-mono text-xs bg-black/10 dark:bg-white/10 px-1 rounded">$1</code>');
+}
+
+function renderMd(text) {
+  const lines = (text || '').split('\n');
+  let out = '', inUl = false;
+  for (const line of lines) {
+    if (/^[-*] /.test(line)) {
+      if (!inUl) { out += '<ul class="list-disc list-inside space-y-0.5">'; inUl = true; }
+      out += `<li>${mdInline(line.slice(2))}</li>`;
+    } else {
+      if (inUl) { out += '</ul>'; inUl = false; }
+      out += line ? `<p>${mdInline(line)}</p>` : '<br>';
+    }
+  }
+  if (inUl) out += '</ul>';
+  return out;
+}
+
+// ─── Note card ────────────────────────────────────────────────────────────────
+
+function renderNoteCard(note) {
+  const cfg = state.config;
+  const t   = TOPBAR[cfg.basePalette] || TOPBAR.stone;
+  const b   = FIXED;
+  const card = document.createElement('div');
+  card.className = `group-section rounded-xl overflow-hidden border shadow-md ${b.card}`;
+
+  // Header
+  const hdr = document.createElement('div');
+  hdr.className = `flex items-center justify-between px-4 py-2.5 ${t.bar} ${t.text}`;
+  const hTitle = document.createElement('span');
+  hTitle.className = 'font-semibold text-sm tracking-wide truncate flex-1';
+  hTitle.textContent = note.title || 'Notes';
+  hdr.appendChild(hTitle);
+
+  if (state.editMode) {
+    const editBtn = mkBtn('✎', 'Edit note', 'opacity-70 hover:opacity-100 text-base px-1 transition-opacity', () => openNoteModal(note));
+    const delBtn = mkBtn('✕', 'Delete note', 'opacity-70 hover:opacity-100 text-base px-1 transition-opacity', async () => {
+      if (!confirm(`Delete note "${note.title}"?`)) return;
+      await api('DELETE', `/api/notes/${note.id}`);
+      await reload();
+    });
+    hdr.appendChild(editBtn);
+    hdr.appendChild(delBtn);
+  }
+  card.appendChild(hdr);
+
+  // Body
+  const body = document.createElement('div');
+  body.className = `px-4 py-3 text-sm ${b.text} max-h-48 overflow-y-auto`;
+  body.innerHTML = renderMd(note.content || '');
+  card.appendChild(body);
+  return card;
+}
+
+// ─── Feed card ────────────────────────────────────────────────────────────────
+
+function renderFeedCard(feed) {
+  const cfg = state.config;
+  const t   = TOPBAR[cfg.basePalette] || TOPBAR.stone;
+  const b   = FIXED;
+  const card = document.createElement('div');
+  card.className = `group-section rounded-xl overflow-hidden border shadow-md ${b.card}`;
+
+  // Header
+  const hdr = document.createElement('div');
+  hdr.className = `flex items-center justify-between px-4 py-2.5 ${t.bar} ${t.text}`;
+  const hTitle = document.createElement('span');
+  hTitle.className = 'font-semibold text-sm tracking-wide truncate flex-1';
+  hTitle.textContent = feed.title || 'Feed';
+  hdr.appendChild(hTitle);
+
+  const refreshBtn = mkBtn('↻', 'Refresh feed', 'opacity-70 hover:opacity-100 text-base px-1 transition-opacity', () => fetchRss(feed));
+  hdr.appendChild(refreshBtn);
+
+  if (state.editMode) {
+    const editBtn = mkBtn('✎', 'Edit feed', 'opacity-70 hover:opacity-100 text-base px-1 transition-opacity', () => openFeedModal(feed));
+    const delBtn = mkBtn('✕', 'Delete feed', 'opacity-70 hover:opacity-100 text-base px-1 transition-opacity', async () => {
+      if (!confirm(`Delete feed "${feed.title}"?`)) return;
+      await api('DELETE', `/api/feeds/${feed.id}`);
+      await reload();
+    });
+    hdr.appendChild(editBtn);
+    hdr.appendChild(delBtn);
+  }
+  card.appendChild(hdr);
+
+  // Body placeholder
+  const body = document.createElement('div');
+  body.id = `rss-${feed.id}`;
+  body.className = `px-4 py-3 text-xs ${FIXED.sub}`;
+  body.textContent = 'Loading…';
+  card.appendChild(body);
+  return card;
+}
+
+// ─── iFrame card ──────────────────────────────────────────────────────────────
+
+function renderIframeCard(iframe) {
+  const cfg = state.config;
+  const t   = TOPBAR[cfg.basePalette] || TOPBAR.stone;
+  const b   = FIXED;
+  const card = document.createElement('div');
+  card.className = `group-section rounded-xl overflow-hidden border shadow-md ${b.card}`;
+
+  // Header
+  const hdr = document.createElement('div');
+  hdr.className = `flex items-center justify-between px-4 py-2.5 ${t.bar} ${t.text}`;
+  const hTitle = document.createElement('span');
+  hTitle.className = 'font-semibold text-sm tracking-wide truncate flex-1';
+  hTitle.textContent = iframe.title || 'Embed';
+  hdr.appendChild(hTitle);
+
+  if (state.editMode) {
+    const editBtn = mkBtn('✎', 'Edit embed', 'opacity-70 hover:opacity-100 text-base px-1 transition-opacity', () => openIframeModal(iframe));
+    const delBtn = mkBtn('✕', 'Delete embed', 'opacity-70 hover:opacity-100 text-base px-1 transition-opacity', async () => {
+      if (!confirm(`Delete embed "${iframe.title}"?`)) return;
+      await api('DELETE', `/api/iframes/${iframe.id}`);
+      await reload();
+    });
+    hdr.appendChild(editBtn);
+    hdr.appendChild(delBtn);
+  }
+  card.appendChild(hdr);
+
+  // iFrame body
+  const frame = document.createElement('iframe');
+  frame.src = iframe.url;
+  frame.className = 'w-full border-0';
+  frame.style.height = `${iframe.height || 300}px`;
+  frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms');
+  frame.loading = 'lazy';
+  card.appendChild(frame);
+  return card;
+}
+
+// ─── RSS fetch ────────────────────────────────────────────────────────────────
+
+async function fetchRss(feed) {
+  const el = document.getElementById(`rss-${feed.id}`);
+  if (!el) return;
+  el.innerHTML = `<span class="${FIXED.sub}">Loading…</span>`;
+  try {
+    const res = await fetch(`/api/rss?url=${encodeURIComponent(feed.url)}`);
+    if (!res.ok) throw new Error(res.status);
+    renderRssItems(feed, await res.json());
+  } catch (err) {
+    el.innerHTML = `<p class="px-0 py-1 text-xs text-red-400">${err.message}</p>`;
+  }
+}
+
+function renderRssItems(feed, data) {
+  const el = document.getElementById(`rss-${feed.id}`);
+  if (!el) return;
+  const items = (data.items || []).slice(0, feed.maxItems || 5);
+  if (!items.length) { el.innerHTML = `<p class="text-xs ${FIXED.sub}">No items found.</p>`; return; }
+
+  const ul = document.createElement('ul');
+  ul.className = 'divide-y divide-black/[0.06] dark:divide-white/[0.08]';
+  items.forEach(item => {
+    const li = document.createElement('li');
+    const a = document.createElement('a');
+    a.href = item.link;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.className = `flex flex-col px-4 py-2 hover:bg-black/5 dark:hover:bg-white/5 transition-colors`;
+    const titleEl = document.createElement('span');
+    titleEl.className = `text-sm ${FIXED.text} line-clamp-2`;
+    titleEl.textContent = item.title;
+    a.appendChild(titleEl);
+    if (item.date) {
+      const dateEl = document.createElement('span');
+      dateEl.className = `text-xs ${FIXED.sub} mt-0.5`;
+      try {
+        const d = new Date(item.date);
+        const diff = Date.now() - d.getTime();
+        const mins = Math.floor(diff / 60000);
+        const hrs  = Math.floor(mins / 60);
+        const days = Math.floor(hrs / 24);
+        dateEl.textContent = days > 0 ? `${days}d ago` : hrs > 0 ? `${hrs}h ago` : mins > 0 ? `${mins}m ago` : 'just now';
+      } catch { dateEl.textContent = item.date; }
+      a.appendChild(dateEl);
+    }
+    li.appendChild(a);
+    ul.appendChild(li);
+  });
+  el.innerHTML = '';
+  el.className = '';
+  el.appendChild(ul);
+}
+
+// ─── Note modal ───────────────────────────────────────────────────────────────
+
+function openNoteModal(note) {
+  const b = FIXED;
+  const wrap = document.createElement('div');
+
+  const title = document.createElement('h2');
+  title.className = `text-lg font-semibold mb-4 ${b.text}`;
+  title.textContent = note ? 'Edit note' : 'Add note';
+  wrap.appendChild(title);
+
+  wrap.appendChild(mkLabel('Title', b.sub));
+  const titleInput = mkInput(note ? note.title : '', 'e.g. Ideas, TODO', b);
+  wrap.appendChild(titleInput);
+
+  const contentLabel = mkLabel('Content', b.sub);
+  contentLabel.className += ' mt-3 block';
+  wrap.appendChild(contentLabel);
+
+  const contentHint = document.createElement('p');
+  contentHint.className = `text-xs mb-1 ${b.sub}`;
+  contentHint.textContent = 'Supports **bold**, *italic*, `code`, and - lists.';
+  wrap.appendChild(contentHint);
+
+  const contentArea = document.createElement('textarea');
+  contentArea.value = note ? (note.content || '') : '';
+  contentArea.placeholder = 'Write your note here…';
+  contentArea.rows = 6;
+  contentArea.className = `w-full px-3 py-2 rounded-lg text-sm border ${b.card} ${b.text} focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all resize-y font-mono`;
+  wrap.appendChild(contentArea);
+
+  const footer = document.createElement('div');
+  footer.className = 'flex justify-end gap-2 mt-6';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.className = `px-4 py-2 rounded-lg text-sm font-medium border ${b.text} opacity-60 hover:opacity-100 transition-opacity`;
+  cancelBtn.onclick = closeModal;
+  footer.appendChild(cancelBtn);
+
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.textContent = note ? 'Save' : 'Create';
+  saveBtn.className = 'px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-500 transition-colors';
+  saveBtn.onclick = async () => {
+    const t = titleInput.value.trim() || 'Notes';
+    const c = contentArea.value.trim();
+    if (note) {
+      await api('PUT', `/api/notes/${note.id}`, { title: t, content: c });
+    } else {
+      await api('POST', '/api/notes', { title: t, content: c });
+    }
+    closeModal();
+    await reload();
+  };
+  footer.appendChild(saveBtn);
+  wrap.appendChild(footer);
+
+  openModal(wrap);
+  titleInput.focus();
+}
+
+// ─── Feed modal ───────────────────────────────────────────────────────────────
+
+function openFeedModal(feed) {
+  const b = FIXED;
+  const wrap = document.createElement('div');
+
+  const title = document.createElement('h2');
+  title.className = `text-lg font-semibold mb-4 ${b.text}`;
+  title.textContent = feed ? 'Edit feed' : 'Add RSS feed';
+  wrap.appendChild(title);
+
+  wrap.appendChild(mkLabel('Title', b.sub));
+  const titleInput = mkInput(feed ? feed.title : '', 'e.g. Tech News', b);
+  wrap.appendChild(titleInput);
+
+  const urlLabel = mkLabel('Feed URL', b.sub);
+  urlLabel.className += ' mt-3 block';
+  wrap.appendChild(urlLabel);
+  const urlInput = mkInput(feed ? feed.url : '', 'https://example.com/feed.xml', b);
+  urlInput.type = 'url';
+  wrap.appendChild(urlInput);
+
+  const maxLabel = mkLabel('Max items', b.sub);
+  maxLabel.className += ' mt-3 block';
+  wrap.appendChild(maxLabel);
+
+  let selectedMax = feed ? (feed.maxItems || 5) : 5;
+  const maxRow = document.createElement('div');
+  maxRow.className = 'flex gap-2 mt-1';
+  const piBase   = 'px-4 py-1.5 rounded-lg text-sm border transition-colors';
+  const piActive = 'bg-indigo-600 text-white border-indigo-600';
+  const piIdle   = `border-stone-300 dark:border-stone-600 ${b.text} hover:bg-stone-100 dark:hover:bg-stone-700`;
+  [3, 5, 10].forEach(n => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = String(n);
+    btn.dataset.val = n;
+    btn.className = `${piBase} ${n === selectedMax ? piActive : piIdle}`;
+    btn.addEventListener('click', () => {
+      selectedMax = n;
+      maxRow.querySelectorAll('button').forEach(b2 => {
+        b2.className = `${piBase} ${Number(b2.dataset.val) === selectedMax ? piActive : piIdle}`;
+      });
+    });
+    maxRow.appendChild(btn);
+  });
+  wrap.appendChild(maxRow);
+
+  const footer = document.createElement('div');
+  footer.className = 'flex justify-end gap-2 mt-6';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.className = `px-4 py-2 rounded-lg text-sm font-medium border ${b.text} opacity-60 hover:opacity-100 transition-opacity`;
+  cancelBtn.onclick = closeModal;
+  footer.appendChild(cancelBtn);
+
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.textContent = feed ? 'Save' : 'Create';
+  saveBtn.className = 'px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-500 transition-colors';
+  saveBtn.onclick = async () => {
+    const t = titleInput.value.trim() || 'Feed';
+    const u = urlInput.value.trim();
+    if (!u) { urlInput.focus(); return; }
+    if (feed) {
+      await api('PUT', `/api/feeds/${feed.id}`, { title: t, url: u, maxItems: selectedMax });
+    } else {
+      await api('POST', '/api/feeds', { title: t, url: u, maxItems: selectedMax });
+    }
+    closeModal();
+    await reload();
+  };
+  footer.appendChild(saveBtn);
+  wrap.appendChild(footer);
+
+  openModal(wrap);
+  titleInput.focus();
+}
+
+// ─── iFrame modal ─────────────────────────────────────────────────────────────
+
+function openIframeModal(iframe) {
+  const b = FIXED;
+  const wrap = document.createElement('div');
+
+  const title = document.createElement('h2');
+  title.className = `text-lg font-semibold mb-4 ${b.text}`;
+  title.textContent = iframe ? 'Edit embed' : 'Add embed';
+  wrap.appendChild(title);
+
+  wrap.appendChild(mkLabel('Title', b.sub));
+  const titleInput = mkInput(iframe ? iframe.title : '', 'e.g. Grafana', b);
+  wrap.appendChild(titleInput);
+
+  const urlLabel = mkLabel('URL', b.sub);
+  urlLabel.className += ' mt-3 block';
+  wrap.appendChild(urlLabel);
+  const urlInput = mkInput(iframe ? iframe.url : '', 'https://grafana.example.com/d/...', b);
+  urlInput.type = 'url';
+  wrap.appendChild(urlInput);
+
+  const heightLabel = mkLabel('Height (px)', b.sub);
+  heightLabel.className += ' mt-3 block';
+  wrap.appendChild(heightLabel);
+
+  let selectedHeight = iframe ? (iframe.height || 300) : 300;
+  const heightRow = document.createElement('div');
+  heightRow.className = 'flex gap-2 mt-1 flex-wrap';
+  const piBase   = 'px-4 py-1.5 rounded-lg text-sm border transition-colors';
+  const piActive = 'bg-indigo-600 text-white border-indigo-600';
+  const piIdle   = `border-stone-300 dark:border-stone-600 ${b.text} hover:bg-stone-100 dark:hover:bg-stone-700`;
+  [200, 300, 500, 800].forEach(n => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = String(n);
+    btn.dataset.val = n;
+    btn.className = `${piBase} ${n === selectedHeight ? piActive : piIdle}`;
+    btn.addEventListener('click', () => {
+      selectedHeight = n;
+      heightRow.querySelectorAll('button').forEach(b2 => {
+        b2.className = `${piBase} ${Number(b2.dataset.val) === selectedHeight ? piActive : piIdle}`;
+      });
+    });
+    heightRow.appendChild(btn);
+  });
+  wrap.appendChild(heightRow);
+
+  const footer = document.createElement('div');
+  footer.className = 'flex justify-end gap-2 mt-6';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.className = `px-4 py-2 rounded-lg text-sm font-medium border ${b.text} opacity-60 hover:opacity-100 transition-opacity`;
+  cancelBtn.onclick = closeModal;
+  footer.appendChild(cancelBtn);
+
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.textContent = iframe ? 'Save' : 'Create';
+  saveBtn.className = 'px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-500 transition-colors';
+  saveBtn.onclick = async () => {
+    const t = titleInput.value.trim() || 'Embed';
+    const u = urlInput.value.trim();
+    if (!u) { urlInput.focus(); return; }
+    if (iframe) {
+      await api('PUT', `/api/iframes/${iframe.id}`, { title: t, url: u, height: selectedHeight });
+    } else {
+      await api('POST', '/api/iframes', { title: t, url: u, height: selectedHeight });
+    }
+    closeModal();
+    await reload();
+  };
+  footer.appendChild(saveBtn);
+  wrap.appendChild(footer);
+
+  openModal(wrap);
+  titleInput.focus();
+}
+
+// ─── Keybinds modal ───────────────────────────────────────────────────────────
+
+function openKeybindsModal() {
+  const b = FIXED;
+  const wrap = document.createElement('div');
+
+  const title = document.createElement('h2');
+  title.className = `text-lg font-semibold mb-4 ${b.text}`;
+  title.textContent = 'Keyboard shortcuts';
+  wrap.appendChild(title);
+
+  // Navigation section
+  const navTitle = document.createElement('p');
+  navTitle.className = `text-xs font-semibold uppercase tracking-wider mb-2 ${b.sub}`;
+  navTitle.textContent = 'Navigation';
+  wrap.appendChild(navTitle);
+
+  const navShortcuts = [
+    { keys: ['⌃K', '⌘K'], desc: 'Open search' },
+    { keys: ['/'],         desc: 'Open search' },
+    { keys: ['Esc'],       desc: 'Close modal / search / menu' },
+  ];
+
+  const navTable = document.createElement('div');
+  navTable.className = 'space-y-2 mb-4';
+  navShortcuts.forEach(({ keys, desc }) => {
+    const row = document.createElement('div');
+    row.className = 'flex items-center gap-3';
+    const kbdWrap = document.createElement('div');
+    kbdWrap.className = 'flex gap-1 flex-shrink-0 min-w-[5rem]';
+    keys.forEach(k => {
+      const kbd = document.createElement('kbd');
+      kbd.className = `text-xs font-mono px-1.5 py-0.5 rounded border border-stone-200 dark:border-stone-700 ${b.sub} bg-stone-50 dark:bg-stone-900`;
+      kbd.textContent = k;
+      kbdWrap.appendChild(kbd);
+    });
+    const descEl = document.createElement('span');
+    descEl.className = `text-sm ${b.text}`;
+    descEl.textContent = desc;
+    row.appendChild(kbdWrap);
+    row.appendChild(descEl);
+    navTable.appendChild(row);
+  });
+  wrap.appendChild(navTable);
+
+  // Link hotkeys section
+  const sep = document.createElement('hr');
+  sep.className = 'my-3 border-stone-200 dark:border-stone-700';
+  wrap.appendChild(sep);
+
+  const linkTitle = document.createElement('p');
+  linkTitle.className = `text-xs font-semibold uppercase tracking-wider mb-1 ${b.sub}`;
+  linkTitle.textContent = 'Link hotkeys';
+  wrap.appendChild(linkTitle);
+
+  const linkHint = document.createElement('p');
+  linkHint.className = `text-xs mb-3 ${b.sub}`;
+  linkHint.textContent = 'Assigned in Edit mode → link ✎';
+  wrap.appendChild(linkHint);
+
+  const allLinks = (state.config?.groups || []).flatMap(g => g.links).filter(l => l.hotkey);
+  if (allLinks.length === 0) {
+    const none = document.createElement('p');
+    none.className = `text-sm ${b.sub} italic`;
+    none.textContent = '(none assigned yet)';
+    wrap.appendChild(none);
+  } else {
+    const grid = document.createElement('div');
+    grid.className = 'flex flex-wrap gap-3';
+    allLinks.forEach(link => {
+      const chip = document.createElement('div');
+      chip.className = `flex items-center gap-1.5 text-sm ${b.text}`;
+      const kbd = document.createElement('kbd');
+      kbd.className = `text-xs font-mono px-1.5 py-0.5 rounded border border-stone-200 dark:border-stone-700 ${b.sub} bg-stone-50 dark:bg-stone-900`;
+      kbd.textContent = link.hotkey.toUpperCase();
+      chip.appendChild(kbd);
+      const nameEl = document.createElement('span');
+      nameEl.textContent = link.name;
+      chip.appendChild(nameEl);
+      grid.appendChild(chip);
+    });
+    wrap.appendChild(grid);
+  }
+
+  const footer = document.createElement('div');
+  footer.className = 'flex justify-end mt-6';
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.textContent = 'Close';
+  closeBtn.className = `px-4 py-2 rounded-lg text-sm font-medium border ${b.text} opacity-60 hover:opacity-100 transition-opacity`;
+  closeBtn.onclick = closeModal;
+  footer.appendChild(closeBtn);
+  wrap.appendChild(footer);
+
+  openModal(wrap);
+}
+
 // ─── Wire up controls ─────────────────────────────────────────────────────────
 
 document.getElementById('themeToggle').addEventListener('click', async () => {
@@ -1716,6 +2451,11 @@ document.getElementById('menuEdit').addEventListener('click', () => {
   closeMenu();
   state.editMode = !state.editMode;
   render();
+});
+
+document.getElementById('menuShortcuts').addEventListener('click', () => {
+  closeMenu();
+  openKeybindsModal();
 });
 
 document.getElementById('menuViewToggle').addEventListener('click', async () => {
