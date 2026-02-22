@@ -3,15 +3,45 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
-const { randomUUID } = require('crypto');
+const { randomUUID, timingSafeEqual } = require('crypto');
 const http  = require('node:http');
 const https = require('node:https');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-const DATA_FILE = process.env.DATA_FILE || '/data/config.json';
-const DATA_TEMP = DATA_FILE + '.tmp';
-const ICONS_DIR = process.env.ICONS_DIR || '/data/icons';
+const PORT       = process.env.PORT       || 3000;
+const DATA_FILE  = process.env.DATA_FILE  || '/data/config.json';
+const DATA_TEMP  = DATA_FILE + '.tmp';
+const ICONS_DIR  = process.env.ICONS_DIR  || '/data/icons';
+const FAVICON_FILE = '/data/favicon';
+const FAVICON_MIME = '/data/favicon.mime';
+
+// ─── Basic auth (optional) ────────────────────────────────────────────────────
+
+const AUTH_USER = (process.env.AUTH_USER || '').trim();
+const AUTH_PASS = (process.env.AUTH_PASS || '').trim();
+
+function safeEq(a, b) {
+  const ab = Buffer.from(a), bb = Buffer.from(b);
+  return ab.length === bb.length && timingSafeEqual(ab, bb);
+}
+
+if (AUTH_USER && AUTH_PASS) {
+  app.use((req, res, next) => {
+    if (req.path === '/health') return next(); // keep healthcheck working
+    const hdr = req.headers['authorization'] || '';
+    if (hdr.startsWith('Basic ')) {
+      const decoded  = Buffer.from(hdr.slice(6), 'base64').toString('utf8');
+      const colonIdx = decoded.indexOf(':');
+      if (colonIdx !== -1) {
+        const u = decoded.slice(0, colonIdx);
+        const p = decoded.slice(colonIdx + 1);
+        if (safeEq(u, AUTH_USER) && safeEq(p, AUTH_PASS)) return next();
+      }
+    }
+    res.setHeader('WWW-Authenticate', 'Basic realm="Tailboard", charset="UTF-8"');
+    res.status(401).send('Unauthorized');
+  });
+}
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -181,16 +211,43 @@ app.get('/api/icon/:slug', async (req, res) => {
   }
 });
 
+// ─── Favicon ──────────────────────────────────────────────────────────────────
+
+app.get(['/favicon.ico', '/api/favicon'], (req, res) => {
+  if (!fs.existsSync(FAVICON_FILE)) return res.status(404).send('');
+  let mime = 'image/x-icon';
+  try { mime = fs.readFileSync(FAVICON_MIME, 'utf8').trim(); } catch {}
+  res.setHeader('Content-Type', mime);
+  res.setHeader('Cache-Control', 'no-cache');
+  res.sendFile(FAVICON_FILE);
+});
+
+app.post('/api/favicon', express.raw({ type: /^image\//, limit: '2mb' }), (req, res) => {
+  if (!req.body || !req.body.length) return res.status(400).json({ error: 'no image data' });
+  const mime = (req.headers['content-type'] || 'image/x-icon').split(';')[0].trim();
+  fs.mkdirSync(path.dirname(FAVICON_FILE), { recursive: true });
+  fs.writeFileSync(FAVICON_FILE, req.body);
+  fs.writeFileSync(FAVICON_MIME, mime, 'utf8');
+  res.json({ ok: true });
+});
+
+app.delete('/api/favicon', (req, res) => {
+  try { fs.unlinkSync(FAVICON_FILE); } catch {}
+  try { fs.unlinkSync(FAVICON_MIME); } catch {}
+  res.json({ ok: true });
+});
+
 // ─── Groups ───────────────────────────────────────────────────────────────────
 
 app.post('/api/groups', (req, res) => {
   const cfg = loadConfig();
-  const { name, accent } = req.body;
+  const { name, accent, icon } = req.body;
   if (!name) return res.status(400).json({ error: 'name required' });
   const group = {
     id: randomUUID(),
     name: String(name).trim().slice(0, 80),
     accent: String(accent || 'slate'),
+    icon: String(icon || '').trim().slice(0, 80).replace(/[^a-z0-9-]/g, ''),
     collapsed: false,
     links: [],
   };
@@ -214,10 +271,11 @@ app.put('/api/groups/:id', (req, res) => {
   const cfg = loadConfig();
   const group = findGroup(cfg, req.params.id);
   if (!group) return res.status(404).json({ error: 'group not found' });
-  const { name, accent, collapsed } = req.body;
-  if (name !== undefined) group.name = String(name).trim().slice(0, 80);
-  if (accent !== undefined) group.accent = String(accent);
+  const { name, accent, collapsed, icon } = req.body;
+  if (name !== undefined)      group.name      = String(name).trim().slice(0, 80);
+  if (accent !== undefined)    group.accent    = String(accent);
   if (collapsed !== undefined) group.collapsed = Boolean(collapsed);
+  if (icon !== undefined)      group.icon      = String(icon).trim().slice(0, 80).replace(/[^a-z0-9-]/g, '');
   saveConfig(cfg);
   res.json(group);
 });

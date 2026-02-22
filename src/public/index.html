@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Tailboard</title>
   <link rel="stylesheet" href="/style.css" />
+  <link rel="icon" id="faviconLink" href="/api/favicon">
   <style>
     /* Drag handle cursor — also declared here so non-Tailwind browsers cover it */
     .drag-handle { cursor: grab; }
@@ -358,6 +359,15 @@ function render() {
       leftSide.appendChild(handle);
     }
 
+    if (group.icon) {
+      const gIcon = document.createElement('img');
+      gIcon.src = `/api/icon/${group.icon}`;
+      gIcon.alt = '';
+      gIcon.className = 'w-5 h-5 object-contain flex-shrink-0 opacity-90';
+      gIcon.onerror = () => gIcon.remove();
+      leftSide.appendChild(gIcon);
+    }
+
     const titleSpan = document.createElement('span');
     titleSpan.className = 'font-semibold text-sm tracking-wide truncate';
     titleSpan.textContent = group.name;
@@ -708,6 +718,31 @@ function openGroupModal(group) {
   wrap.appendChild(accLabel);
   wrap.appendChild(mkSwatchPicker(selectedAccent, PALETTES, c => ACCENT[c].swatch, c => { selectedAccent = c; }));
 
+  const iconLabel = mkLabel('Icon slug (optional)', b.sub);
+  iconLabel.className += ' mt-4 block';
+  wrap.appendChild(iconLabel);
+
+  const iconRow = document.createElement('div');
+  iconRow.className = 'flex items-center gap-3';
+  const iconInput = mkInput(group ? (group.icon || '') : '', 'e.g. home-assistant, proxmox', b);
+  iconInput.className += ' flex-1';
+  iconRow.appendChild(iconInput);
+
+  const iconPreview = document.createElement('img');
+  iconPreview.className = 'w-8 h-8 object-contain flex-shrink-0';
+  iconPreview.style.display = 'none';
+  iconPreview.onerror = () => { iconPreview.style.display = 'none'; };
+  iconRow.appendChild(iconPreview);
+
+  function updateGrpIconPreview() {
+    const slug = iconInput.value.trim().replace(/[^a-z0-9-]/g, '');
+    if (slug) { iconPreview.src = `/api/icon/${slug}?t=${Date.now()}`; iconPreview.style.display = 'block'; }
+    else { iconPreview.style.display = 'none'; }
+  }
+  iconInput.addEventListener('input', updateGrpIconPreview);
+  if (group && group.icon) updateGrpIconPreview();
+  wrap.appendChild(iconRow);
+
   const footer = document.createElement('div');
   footer.className = 'flex justify-end gap-2 mt-6';
   const cancelBtn = document.createElement('button');
@@ -723,11 +758,12 @@ function openGroupModal(group) {
   saveBtn.className = 'px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-500 transition-colors';
   saveBtn.onclick = async () => {
     const name = nameInput.value.trim();
+    const icon = iconInput.value.trim().replace(/[^a-z0-9-]/g, '');
     if (!name) { nameInput.focus(); return; }
     if (group) {
-      await api('PUT', `/api/groups/${group.id}`, { name, accent: selectedAccent });
+      await api('PUT', `/api/groups/${group.id}`, { name, accent: selectedAccent, icon });
     } else {
-      await api('POST', '/api/groups', { name, accent: selectedAccent });
+      await api('POST', '/api/groups', { name, accent: selectedAccent, icon });
     }
     closeModal();
     await reload();
@@ -949,6 +985,64 @@ function openSettingsModal() {
     c => { selectedBase = c; }
   ));
 
+  // ── Favicon ──────────────────────────────────────────────────────────────────
+  const favSep = document.createElement('hr');
+  favSep.className = 'my-5 border-stone-200 dark:border-stone-700';
+  wrap.appendChild(favSep);
+
+  const favTitle = document.createElement('p');
+  favTitle.className = `text-xs font-semibold uppercase tracking-wider mb-3 ${b.sub}`;
+  favTitle.textContent = 'Favicon';
+  wrap.appendChild(favTitle);
+
+  const favRow = document.createElement('div');
+  favRow.className = 'flex items-center gap-3';
+
+  const favPreview = document.createElement('img');
+  favPreview.src = '/api/favicon?t=' + Date.now();
+  favPreview.className = 'w-10 h-10 object-contain rounded border border-stone-200 dark:border-stone-700 flex-shrink-0';
+  favPreview.onerror = () => { favPreview.style.opacity = '0'; };
+  favRow.appendChild(favPreview);
+
+  const favFileInput = document.createElement('input');
+  favFileInput.type = 'file';
+  favFileInput.accept = 'image/*';
+  favFileInput.className = 'hidden';
+  favFileInput.addEventListener('change', async () => {
+    const file = favFileInput.files && favFileInput.files[0];
+    if (!file) return;
+    const res = await fetch('/api/favicon', {
+      method: 'POST',
+      headers: { 'Content-Type': file.type },
+      body: file,
+    });
+    if (res.ok) {
+      favPreview.style.opacity = '1';
+      favPreview.src = '/api/favicon?t=' + Date.now();
+      refreshFavicon();
+    }
+  });
+  favRow.appendChild(favFileInput);
+
+  const uploadFavBtn = document.createElement('button');
+  uploadFavBtn.type = 'button';
+  uploadFavBtn.textContent = '↑ Upload';
+  uploadFavBtn.className = 'px-3 py-2 rounded-lg text-sm font-medium border border-stone-300 dark:border-stone-600 text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-700 transition-colors';
+  uploadFavBtn.addEventListener('click', () => favFileInput.click());
+  favRow.appendChild(uploadFavBtn);
+
+  const removeFavBtn = document.createElement('button');
+  removeFavBtn.type = 'button';
+  removeFavBtn.textContent = '✕ Remove';
+  removeFavBtn.className = 'px-3 py-2 rounded-lg text-sm font-medium border border-red-200 dark:border-red-800/60 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors';
+  removeFavBtn.addEventListener('click', async () => {
+    await fetch('/api/favicon', { method: 'DELETE' });
+    favPreview.style.opacity = '0';
+    refreshFavicon();
+  });
+  favRow.appendChild(removeFavBtn);
+  wrap.appendChild(favRow);
+
   // ── Import / Export ──────────────────────────────────────────────────────────
   const ioSep = document.createElement('hr');
   ioSep.className = 'my-5 border-stone-200 dark:border-stone-700';
@@ -1110,6 +1204,13 @@ function moveSearchSelection(delta) {
   selectedSearchIdx = Math.max(0, Math.min(items.length - 1, selectedSearchIdx + delta));
   items[selectedSearchIdx].classList.add('bg-stone-100', 'dark:bg-stone-700/50');
   items[selectedSearchIdx].scrollIntoView({ block: 'nearest' });
+}
+
+// ─── Favicon helper ───────────────────────────────────────────────────────────
+
+function refreshFavicon() {
+  const link = document.getElementById('faviconLink');
+  if (link) link.href = '/api/favicon?t=' + Date.now();
 }
 
 // ─── Config import / export ───────────────────────────────────────────────────
