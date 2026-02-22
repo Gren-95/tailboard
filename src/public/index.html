@@ -115,6 +115,8 @@ const ICON_BG_MAP = Object.fromEntries(
     </button>
     <h1 id="dashTitle" class="text-xl font-semibold tracking-tight cursor-pointer select-none" title="Click to rename"></h1>
   </div>
+  <div class="flex items-center gap-3">
+  <span id="clock" class="hidden text-sm font-mono opacity-70 tabular-nums select-none"></span>
   <div class="relative">
     <button id="menuBtn" title="Menu"
       class="rounded-lg p-2 opacity-70 hover:opacity-100 transition-opacity">
@@ -138,6 +140,14 @@ const ICON_BG_MAP = Object.fromEntries(
         class="w-full text-left px-4 py-2.5 text-sm text-stone-700 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-700/60 transition-colors">
         Edit mode
       </button>
+      <button id="menuViewToggle"
+        class="w-full text-left px-4 py-2.5 text-sm text-stone-700 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-700/60 transition-colors">
+        ☰ List view
+      </button>
+      <button id="menuClockToggle"
+        class="w-full text-left px-4 py-2.5 text-sm text-stone-700 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-700/60 transition-colors">
+        🕐 Show clock
+      </button>
       <hr id="menuLogoutSep" class="hidden my-1 border-stone-200 dark:border-stone-700">
       <a id="menuLogout" href="/logout"
         class="hidden block px-4 py-2.5 text-sm text-stone-500 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-700/60 transition-colors">
@@ -145,7 +155,16 @@ const ICON_BG_MAP = Object.fromEntries(
       </a>
     </div>
   </div>
+  </div>
 </header>
+
+<!-- Pinned bar -->
+<div id="pinnedSection" class="hidden border-b border-stone-200 dark:border-stone-800">
+  <div class="px-6 py-2.5 flex items-center flex-wrap gap-2">
+    <span class="text-xs font-semibold uppercase tracking-wider text-stone-400 dark:text-stone-500 mr-1 flex-shrink-0">Pinned</span>
+    <div id="pinnedLinks" class="flex flex-wrap gap-2"></div>
+  </div>
+</div>
 
 <!-- Main grid -->
 <main id="groupsContainer" class="p-6 grid gap-5" style="grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); align-items: start;"></main>
@@ -287,6 +306,15 @@ function applyBase(palette) {
       me.className = 'w-full text-left px-4 py-2.5 text-sm text-stone-700 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-700/60 transition-colors';
     }
   }
+
+  const vt = document.getElementById('menuViewToggle');
+  if (vt) vt.textContent = state.config && state.config.viewMode === 'list' ? '⊞ Grid view' : '☰ List view';
+
+  const ct = document.getElementById('menuClockToggle');
+  if (ct) ct.textContent = state.config && state.config.showClock ? '🕐 Hide clock' : '🕐 Show clock';
+
+  const clockEl = document.getElementById('clock');
+  if (clockEl) clockEl.classList.toggle('hidden', !(state.config && state.config.showClock));
 }
 
 // ─── Render ──────────────────────────────────────────────────────────────────
@@ -294,6 +322,7 @@ function applyBase(palette) {
 function render() {
   const cfg = state.config;
   const b = FIXED;
+  const isList = cfg.viewMode === 'list';
 
   document.title = cfg.title || 'Tailboard';
   document.getElementById('dashTitle').textContent = cfg.title || 'Tailboard';
@@ -302,6 +331,9 @@ function render() {
 
   const container = document.getElementById('groupsContainer');
   container.innerHTML = '';
+  container.style.gridTemplateColumns = isList
+    ? '1fr'
+    : 'repeat(auto-fill, minmax(280px, 1fr))';
 
   cfg.groups.forEach((group) => {
     const acc = ACCENT[group.accent] || ACCENT.slate;
@@ -442,7 +474,7 @@ function render() {
 
       group.links.forEach((link) => {
         const row = document.createElement('div');
-        row.className = `link-row flex items-center gap-3 px-3 py-2.5 ${acc.border} transition-opacity duration-100`;
+        row.className = `link-row flex items-center gap-3 ${isList ? 'px-2 py-1.5' : 'px-3 py-2.5'} ${acc.border} transition-opacity duration-100`;
         row.dataset.linkId = link.id;
 
         if (state.editMode) {
@@ -517,7 +549,7 @@ function render() {
         }
 
         // Icon (includes status dot)
-        const iconWrap = mkIconWrap(link);
+        const iconWrap = mkIconWrap(link, isList);
 
         // Text
         const textWrap = document.createElement('div');
@@ -526,7 +558,7 @@ function render() {
         nameEl.className = `text-sm font-medium truncate ${b.text}`;
         nameEl.textContent = link.name;
         textWrap.appendChild(nameEl);
-        if (link.description) {
+        if (link.description && !isList) {
           const desc = document.createElement('div');
           desc.className = `text-xs truncate ${b.sub}`;
           desc.textContent = link.description;
@@ -539,6 +571,15 @@ function render() {
         if (state.editMode) {
           const editControls = document.createElement('div');
           editControls.className = 'flex items-center gap-1 flex-shrink-0';
+          editControls.appendChild(mkBtn(
+            link.pinned ? '★' : '☆',
+            link.pinned ? 'Unpin' : 'Pin to top',
+            `text-xs px-1 rounded hover:opacity-100 opacity-60 ${link.pinned ? 'text-yellow-500' : b.sub}`,
+            async () => {
+              await api('PUT', `/api/groups/${group.id}/links/${link.id}`, { pinned: !link.pinned });
+              await reload();
+            }
+          ));
           editControls.appendChild(mkBtn('✎', 'Edit link', `text-xs px-1 rounded ${b.sub} hover:opacity-100 opacity-60`, () => openLinkModal(group.id, link)));
           editControls.appendChild(mkBtn('✕', 'Delete link', 'text-xs px-1 rounded text-red-400 hover:opacity-100 opacity-60', async () => {
             if (!confirm(`Delete link "${link.name}"?`)) return;
@@ -579,6 +620,8 @@ function render() {
     addGroupBtn.onclick = () => openGroupModal();
     container.appendChild(addGroupBtn);
   }
+
+  renderPinned();
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -606,9 +649,9 @@ function mkPlaceholderIcon(colorClass) {
 // ─── Icon wrap helper ─────────────────────────────────────────────────────────
 
 /** Returns a position:relative wrapper containing the icon + status dot. */
-function mkIconWrap(link) {
+function mkIconWrap(link, compact) {
   const outer = document.createElement('div');
-  outer.className = 'relative flex-shrink-0 w-9 h-9';
+  outer.className = `relative flex-shrink-0 ${compact ? 'w-7 h-7' : 'w-9 h-9'}`;
 
   const inner = document.createElement('div');
   inner.className = 'w-full h-full flex items-center justify-center';
@@ -653,6 +696,66 @@ async function pollStatus() {
     statusMap = await api('GET', '/api/status');
     applyStatusDots();
   } catch { /* best-effort */ }
+}
+
+// ─── Pinned bar ───────────────────────────────────────────────────────────────
+
+function renderPinned() {
+  const section   = document.getElementById('pinnedSection');
+  const container = document.getElementById('pinnedLinks');
+  if (!section || !container) return;
+
+  const allPinned = (state.config.groups || []).flatMap(g =>
+    g.links.filter(l => l.pinned).map(l => ({ link: l, group: g }))
+  );
+
+  if (allPinned.length === 0 && !state.editMode) {
+    section.classList.add('hidden');
+    return;
+  }
+  section.classList.remove('hidden');
+  container.innerHTML = '';
+
+  allPinned.forEach(({ link, group }) => {
+    if (state.editMode) {
+      const chip = document.createElement('div');
+      chip.className = `flex items-center gap-1.5 pl-2.5 pr-1 py-1 rounded-lg text-sm border ${FIXED.card} ${FIXED.text}`;
+      if (link.icon) {
+        const img = document.createElement('img');
+        img.src = `/api/icon/${link.icon}`;
+        img.className = 'w-4 h-4 object-contain flex-shrink-0';
+        img.onerror = () => img.remove();
+        chip.appendChild(img);
+      }
+      const name = document.createElement('span');
+      name.className = 'text-sm';
+      name.textContent = link.name;
+      chip.appendChild(name);
+      const unpin = mkBtn('✕', 'Unpin', 'ml-1 text-xs opacity-40 hover:opacity-90 hover:text-red-500 transition-colors', async () => {
+        await api('PUT', `/api/groups/${group.id}/links/${link.id}`, { pinned: false });
+        await reload();
+      });
+      chip.appendChild(unpin);
+      container.appendChild(chip);
+    } else {
+      const chip = document.createElement('a');
+      chip.href = link.url;
+      chip.target = '_blank';
+      chip.rel = 'noopener';
+      chip.className = `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium border ${FIXED.card} ${FIXED.text} hover:bg-black/5 dark:hover:bg-white/5 transition-colors`;
+      if (link.icon) {
+        const img = document.createElement('img');
+        img.src = `/api/icon/${link.icon}`;
+        img.className = 'w-4 h-4 object-contain flex-shrink-0';
+        img.onerror = () => img.remove();
+        chip.appendChild(img);
+      }
+      const name = document.createElement('span');
+      name.textContent = link.name;
+      chip.appendChild(name);
+      container.appendChild(chip);
+    }
+  });
 }
 
 // ─── Colour swatch picker ─────────────────────────────────────────────────────
@@ -917,6 +1020,50 @@ function openLinkModal(groupId, link) {
   const descInput = mkInput(link ? link.description : '', 'Short note…', b);
   wrap.appendChild(descInput);
 
+  // Ping toggle + custom ping URL
+  const pingRow = document.createElement('div');
+  pingRow.className = 'flex items-center gap-2 mt-4';
+  const pingCheck = document.createElement('input');
+  pingCheck.type = 'checkbox';
+  pingCheck.id = 'linkPingCheck';
+  pingCheck.checked = link ? link.ping !== false : true;
+  pingCheck.className = 'rounded';
+  const pingLabelEl = document.createElement('label');
+  pingLabelEl.htmlFor = 'linkPingCheck';
+  pingLabelEl.className = `text-sm cursor-pointer ${b.text}`;
+  pingLabelEl.textContent = 'Check service status';
+  pingRow.appendChild(pingCheck);
+  pingRow.appendChild(pingLabelEl);
+  wrap.appendChild(pingRow);
+
+  const pingUrlSection = document.createElement('div');
+  pingUrlSection.className = pingCheck.checked ? 'mt-2' : 'mt-2 hidden';
+  const pingUrlLabel = mkLabel('Custom ping URL (optional)', b.sub);
+  pingUrlSection.appendChild(pingUrlLabel);
+  const pingUrlInput = mkInput(link ? (link.pingUrl || '') : '', 'Defaults to link URL', b);
+  pingUrlSection.appendChild(pingUrlInput);
+  wrap.appendChild(pingUrlSection);
+
+  pingCheck.addEventListener('change', () => {
+    pingUrlSection.classList.toggle('hidden', !pingCheck.checked);
+  });
+
+  // Pinned
+  const pinnedRow = document.createElement('div');
+  pinnedRow.className = 'flex items-center gap-2 mt-3';
+  const pinnedCheck = document.createElement('input');
+  pinnedCheck.type = 'checkbox';
+  pinnedCheck.id = 'linkPinnedCheck';
+  pinnedCheck.checked = link ? Boolean(link.pinned) : false;
+  pinnedCheck.className = 'rounded';
+  const pinnedLabelEl = document.createElement('label');
+  pinnedLabelEl.htmlFor = 'linkPinnedCheck';
+  pinnedLabelEl.className = `text-sm cursor-pointer ${b.text}`;
+  pinnedLabelEl.textContent = 'Pin to top of page';
+  pinnedRow.appendChild(pinnedCheck);
+  pinnedRow.appendChild(pinnedLabelEl);
+  wrap.appendChild(pinnedRow);
+
   // Group picker — lets user move an existing link to a different group
   let targetGroupId = groupId;
   if (state.config.groups.length > 1) {
@@ -960,6 +1107,9 @@ function openLinkModal(groupId, link) {
       icon: iconInput.value.trim().replace(/[^a-z0-9-]/g, ''),
       iconBg: selectedIconBg,
       description: descInput.value.trim(),
+      ping:    pingCheck.checked,
+      pingUrl: pingCheck.checked ? pingUrlInput.value.trim() : '',
+      pinned:  pinnedCheck.checked,
     };
     if (link) {
       if (targetGroupId !== groupId) {
@@ -1015,6 +1165,46 @@ function openSettingsModal() {
     c => ACCENT[c].swatch,
     c => { selectedBase = c; }
   ));
+
+  // ── Ping interval ─────────────────────────────────────────────────────────────
+  const piSep = document.createElement('hr');
+  piSep.className = 'my-5 border-stone-200 dark:border-stone-700';
+  wrap.appendChild(piSep);
+
+  const piTitle = document.createElement('p');
+  piTitle.className = `text-xs font-semibold uppercase tracking-wider mb-3 ${b.sub}`;
+  piTitle.textContent = 'Service Status';
+  wrap.appendChild(piTitle);
+
+  wrap.appendChild(mkLabel('Ping interval', b.sub));
+
+  let selectedPingInterval = cfg.pingInterval ?? 60;
+  const piOptions = [
+    { value: 30,  label: '30s' },
+    { value: 60,  label: '1m'  },
+    { value: 300, label: '5m'  },
+    { value: 0,   label: 'Off' },
+  ];
+  const piRow = document.createElement('div');
+  piRow.className = 'flex gap-2 mt-1';
+  const piBase = `px-3 py-1.5 rounded-lg text-sm border transition-colors`;
+  const piActive = `bg-indigo-600 text-white border-indigo-600`;
+  const piIdle = `border-stone-300 dark:border-stone-600 ${b.text} hover:bg-stone-100 dark:hover:bg-stone-700`;
+  piOptions.forEach(opt => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = opt.label;
+    btn.dataset.piVal = opt.value;
+    btn.className = `${piBase} ${opt.value === selectedPingInterval ? piActive : piIdle}`;
+    btn.addEventListener('click', () => {
+      selectedPingInterval = opt.value;
+      piRow.querySelectorAll('button').forEach(b2 => {
+        b2.className = `${piBase} ${Number(b2.dataset.piVal) === selectedPingInterval ? piActive : piIdle}`;
+      });
+    });
+    piRow.appendChild(btn);
+  });
+  wrap.appendChild(piRow);
 
   // ── Favicon ──────────────────────────────────────────────────────────────────
   const favSep = document.createElement('hr');
@@ -1142,7 +1332,7 @@ function openSettingsModal() {
   saveBtn.className = 'px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-500 transition-colors';
   saveBtn.onclick = async () => {
     const newTitle = titleInput.value.trim() || 'My Dashboard';
-    await api('PUT', '/api/config', { title: newTitle, basePalette: selectedBase });
+    await api('PUT', '/api/config', { title: newTitle, basePalette: selectedBase, pingInterval: selectedPingInterval });
     closeModal();
     await reload();
   };
@@ -1366,6 +1556,22 @@ document.getElementById('menuEdit').addEventListener('click', () => {
   render();
 });
 
+document.getElementById('menuViewToggle').addEventListener('click', async () => {
+  closeMenu();
+  const next = state.config.viewMode === 'list' ? 'grid' : 'list';
+  await api('PUT', '/api/config', { viewMode: next });
+  state.config.viewMode = next;
+  render();
+});
+
+document.getElementById('menuClockToggle').addEventListener('click', async () => {
+  closeMenu();
+  const next = !state.config.showClock;
+  await api('PUT', '/api/config', { showClock: next });
+  state.config.showClock = next;
+  applyBase(state.config.basePalette);
+});
+
 document.addEventListener('click', e => {
   if (menuOpen && !document.getElementById('menuBtn').contains(e.target)) closeMenu();
 });
@@ -1381,6 +1587,13 @@ document.getElementById('searchInput').addEventListener('input', e => {
 document.getElementById('dashTitle').addEventListener('click', openSettingsModal);
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
+
+function updateClock() {
+  const el = document.getElementById('clock');
+  if (el) el.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+setInterval(updateClock, 30_000);
+updateClock();
 
 reload();
 

@@ -146,13 +146,17 @@ const DEFAULT_CONFIG = {
   title: 'My Dashboard',
   basePalette: 'stone',
   darkMode: true,
+  pingInterval: 60,
+  viewMode: 'grid',
+  showClock: false,
   groups: [],
 };
 
 function loadConfig() {
   try {
     if (fs.existsSync(DATA_FILE)) {
-      return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+      // Merge with DEFAULT_CONFIG so new fields are always present
+      return { ...DEFAULT_CONFIG, ...JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')) };
     }
   } catch {
     // fall through to default
@@ -215,16 +219,24 @@ async function refreshAllStatuses() {
   const links = cfg.groups.flatMap(g => g.links);
   await Promise.all(
     links.map(async link => {
-      statusCache.set(link.id, await checkLink(link.url));
+      if (link.ping === false) {
+        statusCache.delete(link.id); // clear any stale status
+      } else {
+        statusCache.set(link.id, await checkLink(link.pingUrl || link.url));
+      }
     })
   );
 }
 
-// Check 2 s after startup (give server time to settle), then every 60 s
-setTimeout(() => {
-  refreshAllStatuses();
-  setInterval(refreshAllStatuses, 60_000);
-}, 2_000);
+// Self-rescheduling: reads pingInterval from config after each cycle so
+// changes take effect on the next tick without a container restart.
+async function schedulePingCycle() {
+  await refreshAllStatuses();
+  const cfg     = loadConfig();
+  const seconds = cfg.pingInterval ?? 60;
+  if (seconds > 0) setTimeout(schedulePingCycle, seconds * 1000);
+}
+setTimeout(schedulePingCycle, 2_000);
 
 // ─── Health ───────────────────────────────────────────────────────────────────
 
@@ -246,10 +258,13 @@ app.get('/api/config', (req, res) => {
 
 app.put('/api/config', (req, res) => {
   const cfg = loadConfig();
-  const { title, basePalette, darkMode } = req.body;
-  if (title !== undefined) cfg.title = String(title).trim().slice(0, 100);
-  if (basePalette !== undefined) cfg.basePalette = String(basePalette);
-  if (darkMode !== undefined) cfg.darkMode = Boolean(darkMode);
+  const { title, basePalette, darkMode, pingInterval, viewMode, showClock } = req.body;
+  if (title        !== undefined) cfg.title        = String(title).trim().slice(0, 100);
+  if (basePalette  !== undefined) cfg.basePalette  = String(basePalette);
+  if (darkMode     !== undefined) cfg.darkMode     = Boolean(darkMode);
+  if (pingInterval !== undefined) cfg.pingInterval = Math.max(0, Number(pingInterval) || 0);
+  if (viewMode     !== undefined) cfg.viewMode     = ['grid', 'list'].includes(viewMode) ? viewMode : 'grid';
+  if (showClock    !== undefined) cfg.showClock    = Boolean(showClock);
   saveConfig(cfg);
   res.json(cfg);
 });
@@ -269,10 +284,13 @@ app.post('/api/config/import', (req, res) => {
   const current = loadConfig();
   const merged = {
     ...current,
-    title:       typeof body.title       === 'string'  ? body.title       : current.title,
-    basePalette: typeof body.basePalette === 'string'  ? body.basePalette : current.basePalette,
-    darkMode:    typeof body.darkMode    === 'boolean' ? body.darkMode    : current.darkMode,
-    groups:      body.groups,
+    title:        typeof body.title        === 'string'  ? body.title        : current.title,
+    basePalette:  typeof body.basePalette  === 'string'  ? body.basePalette  : current.basePalette,
+    darkMode:     typeof body.darkMode     === 'boolean' ? body.darkMode     : current.darkMode,
+    pingInterval: typeof body.pingInterval === 'number'  ? body.pingInterval : current.pingInterval,
+    viewMode:     typeof body.viewMode     === 'string'  ? body.viewMode     : current.viewMode,
+    showClock:    typeof body.showClock    === 'boolean' ? body.showClock    : current.showClock,
+    groups:       body.groups,
   };
   saveConfig(merged);
   res.json({ ok: true });
@@ -402,6 +420,9 @@ app.post('/api/groups/:id/links', (req, res) => {
     icon: String(icon || '').trim().slice(0, 80).replace(/[^a-z0-9-]/g, ''),
     iconBg: String(req.body.iconBg || 'none').trim().slice(0, 30),
     description: String(description || '').trim().slice(0, 200),
+    ping:    req.body.ping !== false,
+    pingUrl: String(req.body.pingUrl || '').trim().slice(0, 2000),
+    pinned:  Boolean(req.body.pinned),
   };
   group.links.push(link);
   saveConfig(cfg);
@@ -428,11 +449,14 @@ app.put('/api/groups/:gid/links/:lid', (req, res) => {
   const link = group.links.find(l => l.id === req.params.lid);
   if (!link) return res.status(404).json({ error: 'link not found' });
   const { name, url, icon, description } = req.body;
-  if (name !== undefined) link.name = String(name).trim().slice(0, 80);
-  if (url !== undefined) link.url = String(url).trim().slice(0, 2000);
-  if (icon !== undefined) link.icon = String(icon).trim().slice(0, 80).replace(/[^a-z0-9-]/g, '');
-  if (req.body.iconBg !== undefined) link.iconBg = String(req.body.iconBg).trim().slice(0, 30);
+  if (name        !== undefined) link.name        = String(name).trim().slice(0, 80);
+  if (url         !== undefined) link.url         = String(url).trim().slice(0, 2000);
+  if (icon        !== undefined) link.icon        = String(icon).trim().slice(0, 80).replace(/[^a-z0-9-]/g, '');
+  if (req.body.iconBg     !== undefined) link.iconBg     = String(req.body.iconBg).trim().slice(0, 30);
   if (description !== undefined) link.description = String(description).trim().slice(0, 200);
+  if (req.body.ping       !== undefined) link.ping       = req.body.ping !== false;
+  if (req.body.pingUrl    !== undefined) link.pingUrl    = String(req.body.pingUrl).trim().slice(0, 2000);
+  if (req.body.pinned     !== undefined) link.pinned     = Boolean(req.body.pinned);
   saveConfig(cfg);
   res.json(link);
 });
