@@ -29,7 +29,7 @@ RUN mkdir -p /data/icons && chmod +x /entrypoint.sh
 
 EXPOSE 3000
 
-HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=10s \
   CMD wget -qO- http://localhost:3000/health || exit 1
 
 # Entrypoint runs as root, chowns /data, then exec's as node
