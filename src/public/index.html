@@ -669,9 +669,22 @@ function render() {
   container.innerHTML = '';
 
   if (isList) {
-    // List mode: single flat column ordered by widgetOrder.
-    const listOrder = buildWidgetOrder(cfg);
+    // List mode: on mobile use widgetColumns flattened (preserves desktop column order);
+    // on desktop list mode use widgetOrder.
+    const listOrder = (isMobile && (cfg.widgetColumns || []).length > 0)
+      ? buildWidgetColumns(cfg).flat()
+      : buildWidgetOrder(cfg);
     container.className = 'p-3 sm:p-6 columns-1 gap-3 sm:gap-5';
+
+    const mkArrow = (label, title, disabled, onClick) => {
+      const btn = document.createElement('button');
+      btn.textContent = label;
+      btn.title = title;
+      btn.className = `w-8 h-8 flex items-center justify-center rounded-lg text-sm font-bold bg-black/40 dark:bg-white/25 text-white transition-opacity ${disabled ? 'opacity-20 pointer-events-none' : 'opacity-80 active:opacity-100'}`;
+      if (!disabled) btn.addEventListener('click', onClick);
+      return btn;
+    };
+
     listOrder.forEach((id, widgetIdx) => {
       const card = resolveCard(id, cfg);
       if (!card) return;
@@ -680,48 +693,45 @@ function render() {
         if (g && !g.links.some(l => (l.tags || []).includes(state.activeTag))) return;
       }
       card.dataset.widgetId = id;
-      card.classList.add('break-inside-avoid', 'mb-3', 'sm:mb-5');
       if (state.editMode) attachWidgetDnd(card, id);
 
-      // Mobile edit: add up/down arrow overlay for widget reordering
       if (state.editMode && isMobile) {
-        card.style.position = 'relative';
+        // Wrap in a relative container so the arrow strip sits outside overflow:hidden
+        const wrapper = document.createElement('div');
+        wrapper.className = 'relative break-inside-avoid mb-4';
+        wrapper.appendChild(card);
+
         const strip = document.createElement('div');
         strip.className = 'absolute top-1.5 right-1.5 flex gap-1 z-10';
 
-        const mkArrow = (label, title, disabled, onClick) => {
-          const btn = document.createElement('button');
-          btn.textContent = label;
-          btn.title = title;
-          btn.className = `w-7 h-7 flex items-center justify-center rounded-lg text-xs font-bold bg-black/40 dark:bg-white/25 text-white backdrop-blur-sm transition-opacity ${disabled ? 'opacity-20 pointer-events-none' : 'opacity-80 hover:opacity-100'}`;
-          if (!disabled) btn.onclick = onClick;
-          return btn;
-        };
-
         strip.appendChild(mkArrow('▲', 'Move up', widgetIdx === 0, async () => {
-          const order = buildWidgetOrder(state.config);
-          const i = order.indexOf(id);
+          const cols = buildWidgetColumns(state.config);
+          const flat = cols.flat();
+          const i = flat.indexOf(id);
           if (i <= 0) return;
-          [order[i - 1], order[i]] = [order[i], order[i - 1]];
-          await api('PUT', '/api/widgetOrder', { order });
-          state.config.widgetOrder = order;
-          render();
+          const targetId = flat[i - 1];
+          const toColIdx = cols.findIndex(c => c.includes(targetId));
+          const newCols = moveWidget(cols, id, toColIdx >= 0 ? toColIdx : 0, targetId, 'top');
+          await saveColumns(newCols);
         }));
 
         strip.appendChild(mkArrow('▼', 'Move down', widgetIdx === listOrder.length - 1, async () => {
-          const order = buildWidgetOrder(state.config);
-          const i = order.indexOf(id);
-          if (i >= order.length - 1) return;
-          [order[i + 1], order[i]] = [order[i], order[i + 1]];
-          await api('PUT', '/api/widgetOrder', { order });
-          state.config.widgetOrder = order;
-          render();
+          const cols = buildWidgetColumns(state.config);
+          const flat = cols.flat();
+          const i = flat.indexOf(id);
+          if (i >= flat.length - 1) return;
+          const targetId = flat[i + 1];
+          const toColIdx = cols.findIndex(c => c.includes(targetId));
+          const newCols = moveWidget(cols, id, toColIdx >= 0 ? toColIdx : 0, targetId, 'bottom');
+          await saveColumns(newCols);
         }));
 
-        card.appendChild(strip);
+        wrapper.appendChild(strip);
+        container.appendChild(wrapper);
+      } else {
+        card.classList.add('break-inside-avoid', 'mb-4');
+        container.appendChild(card);
       }
-
-      container.appendChild(card);
     });
     if (state.editMode) {
       const addBtn = document.createElement('button');
