@@ -162,6 +162,7 @@ const DEFAULT_CONFIG = {
   widgetOrder:   [],
   widgetColumns: [],   // 2-D: array of columns, each column is an array of widget IDs
   colSpan:       {},
+  hiddenNotes:   [],
 };
 
 function loadConfig() {
@@ -278,7 +279,7 @@ app.get('/api/config', (req, res) => {
 
 app.put('/api/config', (req, res) => {
   const cfg = loadConfig();
-  const { title, basePalette, darkMode, pingInterval, viewMode, showClock, sharpCorners, customCss, weather, background, widgetOrder, colSpan } = req.body;
+  const { title, basePalette, darkMode, pingInterval, viewMode, showClock, sharpCorners, customCss, weather, background, widgetOrder, colSpan, hiddenNotes } = req.body;
   if (title        !== undefined) cfg.title        = String(title).trim().slice(0, 100);
   if (basePalette  !== undefined) cfg.basePalette  = String(basePalette);
   if (darkMode     !== undefined) cfg.darkMode     = Boolean(darkMode);
@@ -303,6 +304,7 @@ app.put('/api/config', (req, res) => {
   }
   if (Array.isArray(widgetOrder)) cfg.widgetOrder = widgetOrder;
   if (colSpan && typeof colSpan === 'object' && !Array.isArray(colSpan)) cfg.colSpan = colSpan;
+  if (Array.isArray(hiddenNotes)) cfg.hiddenNotes = hiddenNotes.filter(id => typeof id === 'string');
   saveConfig(cfg);
   res.json(cfg);
 });
