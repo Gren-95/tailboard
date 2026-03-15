@@ -669,14 +669,10 @@ function render() {
   container.innerHTML = '';
 
   if (isList) {
-    // List mode: single flat column.
-    // On mobile use widgetColumns flattened order so layout matches the desktop column arrangement.
-    // On desktop list mode use widgetOrder.
-    const listOrder = (window.innerWidth < 640 && (cfg.widgetColumns || []).length > 0)
-      ? buildWidgetColumns(cfg).flat()
-      : buildWidgetOrder(cfg);
+    // List mode: single flat column ordered by widgetOrder.
+    const listOrder = buildWidgetOrder(cfg);
     container.className = 'p-3 sm:p-6 columns-1 gap-3 sm:gap-5';
-    listOrder.forEach(id => {
+    listOrder.forEach((id, widgetIdx) => {
       const card = resolveCard(id, cfg);
       if (!card) return;
       if (state.activeTag && !state.editMode) {
@@ -684,8 +680,47 @@ function render() {
         if (g && !g.links.some(l => (l.tags || []).includes(state.activeTag))) return;
       }
       card.dataset.widgetId = id;
-      card.classList.add('break-inside-avoid', 'mb-5');
+      card.classList.add('break-inside-avoid', 'mb-3', 'sm:mb-5');
       if (state.editMode) attachWidgetDnd(card, id);
+
+      // Mobile edit: add up/down arrow overlay for widget reordering
+      if (state.editMode && isMobile) {
+        card.style.position = 'relative';
+        const strip = document.createElement('div');
+        strip.className = 'absolute top-1.5 right-1.5 flex gap-1 z-10';
+
+        const mkArrow = (label, title, disabled, onClick) => {
+          const btn = document.createElement('button');
+          btn.textContent = label;
+          btn.title = title;
+          btn.className = `w-7 h-7 flex items-center justify-center rounded-lg text-xs font-bold bg-black/40 dark:bg-white/25 text-white backdrop-blur-sm transition-opacity ${disabled ? 'opacity-20 pointer-events-none' : 'opacity-80 hover:opacity-100'}`;
+          if (!disabled) btn.onclick = onClick;
+          return btn;
+        };
+
+        strip.appendChild(mkArrow('▲', 'Move up', widgetIdx === 0, async () => {
+          const order = buildWidgetOrder(state.config);
+          const i = order.indexOf(id);
+          if (i <= 0) return;
+          [order[i - 1], order[i]] = [order[i], order[i - 1]];
+          await api('PUT', '/api/widgetOrder', { order });
+          state.config.widgetOrder = order;
+          render();
+        }));
+
+        strip.appendChild(mkArrow('▼', 'Move down', widgetIdx === listOrder.length - 1, async () => {
+          const order = buildWidgetOrder(state.config);
+          const i = order.indexOf(id);
+          if (i >= order.length - 1) return;
+          [order[i + 1], order[i]] = [order[i], order[i + 1]];
+          await api('PUT', '/api/widgetOrder', { order });
+          state.config.widgetOrder = order;
+          render();
+        }));
+
+        card.appendChild(strip);
+      }
+
       container.appendChild(card);
     });
     if (state.editMode) {
@@ -1039,7 +1074,7 @@ function renderGroupCard(group) {
     const grid = document.createElement('div');
     grid.className = 'flex flex-col divide-y divide-black/[0.06] dark:divide-white/[0.08]';
 
-    group.links.forEach((link) => {
+    group.links.forEach((link, linkIdx) => {
       const row = document.createElement('div');
       row.className = `link-row flex items-center gap-3 ${isMobile ? 'px-3 py-3' : isList ? 'px-2 py-1.5' : 'px-3 py-2.5'} ${acc.border} transition-opacity duration-100`;
       row.dataset.linkId = link.id;
@@ -1158,18 +1193,38 @@ function renderGroupCard(group) {
 
       if (state.editMode) {
         const editControls = document.createElement('div');
-        editControls.className = 'flex items-center gap-1 flex-shrink-0';
+        editControls.className = `flex items-center ${isMobile ? 'gap-2' : 'gap-1'} flex-shrink-0`;
+        const btnCls = isMobile
+          ? `text-base p-1.5 rounded-lg hover:opacity-100 opacity-60`
+          : `text-xs px-1 rounded hover:opacity-100 opacity-60`;
+
+        // Up/down arrows on mobile
+        if (isMobile) {
+          editControls.appendChild(mkBtn('▲', 'Move up', `${btnCls} ${linkIdx === 0 ? 'opacity-20 pointer-events-none' : b.sub}`, async () => {
+            const ids = group.links.map(l => l.id);
+            [ids[linkIdx - 1], ids[linkIdx]] = [ids[linkIdx], ids[linkIdx - 1]];
+            await api('PUT', `/api/groups/${group.id}/links/reorder`, { order: ids });
+            await reload();
+          }));
+          editControls.appendChild(mkBtn('▼', 'Move down', `${btnCls} ${linkIdx === group.links.length - 1 ? 'opacity-20 pointer-events-none' : b.sub}`, async () => {
+            const ids = group.links.map(l => l.id);
+            [ids[linkIdx + 1], ids[linkIdx]] = [ids[linkIdx], ids[linkIdx + 1]];
+            await api('PUT', `/api/groups/${group.id}/links/reorder`, { order: ids });
+            await reload();
+          }));
+        }
+
         editControls.appendChild(mkBtn(
           link.pinned ? '★' : '☆',
           link.pinned ? 'Unpin' : 'Pin to top',
-          `text-xs px-1 rounded hover:opacity-100 opacity-60 ${link.pinned ? 'text-yellow-500' : b.sub}`,
+          `${btnCls} ${link.pinned ? 'text-yellow-500' : b.sub}`,
           async () => {
             await api('PUT', `/api/groups/${group.id}/links/${link.id}`, { pinned: !link.pinned });
             await reload();
           }
         ));
-        editControls.appendChild(mkBtn('✎', 'Edit link', `text-xs px-1 rounded ${b.sub} hover:opacity-100 opacity-60`, () => openLinkModal(group.id, link)));
-        editControls.appendChild(mkBtn('✕', 'Delete link', 'text-xs px-1 rounded text-red-400 hover:opacity-100 opacity-60', async () => {
+        editControls.appendChild(mkBtn('✎', 'Edit link', `${btnCls} ${b.sub}`, () => openLinkModal(group.id, link)));
+        editControls.appendChild(mkBtn('✕', 'Delete link', `${btnCls} text-red-400`, async () => {
           if (!confirm(`Delete link "${link.name}"?`)) return;
           await api('DELETE', `/api/groups/${group.id}/links/${link.id}`);
           await reload();
