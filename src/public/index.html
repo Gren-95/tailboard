@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Tailboard</title>
   <link rel="stylesheet" href="/style.css" />
   <link rel="icon" id="faviconLink" href="/api/favicon">
@@ -10,7 +10,27 @@
   <meta name="theme-color" id="metaThemeColor" content="#57534e">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Tailboard">
+  <script>
+    // Prevent pinch-to-zoom and double-tap zoom on mobile.
+    // Viewport meta alone is ignored by iOS Safari 10+.
+    // gesturestart/change/end are Safari-specific and fire before zoom is applied.
+    document.addEventListener('gesturestart',  function(e) { e.preventDefault(); }, { passive: false });
+    document.addEventListener('gesturechange', function(e) { e.preventDefault(); }, { passive: false });
+    document.addEventListener('gestureend',    function(e) { e.preventDefault(); }, { passive: false });
+    // Fallback for non-Safari: block multi-touch moves
+    document.addEventListener('touchmove', function(e) {
+      if (e.scale !== 1) e.preventDefault();
+    }, { passive: false });
+    // Block double-tap zoom
+    let lastTap = 0;
+    document.addEventListener('touchend', function(e) {
+      const now = Date.now();
+      if (now - lastTap < 300) e.preventDefault();
+      lastTap = now;
+    }, { passive: false });
+  </script>
   <style>
+    html, body { touch-action: pan-x pan-y; }
     /* Drag handle cursor — also declared here so non-Tailwind browsers cover it */
     .drag-handle { cursor: grab; }
     .drag-handle:active { cursor: grabbing; }
