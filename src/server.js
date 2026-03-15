@@ -136,7 +136,7 @@ if (AUTH_USER && AUTH_PASS) {
   });
 }
 
-app.use(express.json());
+app.use(express.json({ limit: '4mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ─── Config helpers ───────────────────────────────────────────────────────────
@@ -478,7 +478,7 @@ app.post('/api/groups/:id/links', (req, res) => {
     url: String(url).trim().slice(0, 2000),
     icon: String(icon || '').trim().slice(0, 80).replace(/[^a-z0-9-]/g, ''),
     iconBg: String(req.body.iconBg || 'none').trim().slice(0, 30),
-    customIcon: String(req.body.customIcon || '').trim().slice(0, 10000),
+    customIcon: String(req.body.customIcon || '').trim().slice(0, 2097152),
     description: String(description || '').trim().slice(0, 200),
     ping:    req.body.ping !== false,
     pingUrl: String(req.body.pingUrl || '').trim().slice(0, 2000),
@@ -516,7 +516,7 @@ app.put('/api/groups/:gid/links/:lid', (req, res) => {
   if (url         !== undefined) link.url         = String(url).trim().slice(0, 2000);
   if (icon        !== undefined) link.icon        = String(icon).trim().slice(0, 80).replace(/[^a-z0-9-]/g, '');
   if (req.body.iconBg     !== undefined) link.iconBg     = String(req.body.iconBg).trim().slice(0, 30);
-  if (req.body.customIcon !== undefined) link.customIcon = String(req.body.customIcon).trim().slice(0, 10000);
+  if (req.body.customIcon !== undefined) link.customIcon = String(req.body.customIcon).trim().slice(0, 2097152);
   if (description !== undefined) link.description = String(description).trim().slice(0, 200);
   if (req.body.ping       !== undefined) link.ping       = req.body.ping !== false;
   if (req.body.pingUrl    !== undefined) link.pingUrl    = String(req.body.pingUrl).trim().slice(0, 2000);

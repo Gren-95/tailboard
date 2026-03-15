@@ -1419,7 +1419,13 @@ function mkIconWrap(link, compact) {
   }
   if (link.customIcon) {
     const trimmed = link.customIcon.trim();
-    if (trimmed.startsWith('<svg') || trimmed.startsWith('<SVG')) {
+    if (trimmed.startsWith('data:')) {
+      const img = document.createElement('img');
+      img.src = trimmed;
+      img.alt = link.name;
+      img.className = 'w-full h-full object-contain';
+      inner.appendChild(img);
+    } else if (trimmed.startsWith('<svg') || trimmed.startsWith('<SVG')) {
       const svgWrap = document.createElement('div');
       svgWrap.className = 'w-full h-full flex items-center justify-center';
       const parser = new DOMParser();
@@ -1809,21 +1815,122 @@ function openLinkModal(groupId, link) {
   iconHint.innerHTML = 'Find slugs at <a href="https://dashboardicons.com/icons" target="_blank" rel="noopener" class="underline">dashboardicons.com/icons</a>';
   wrap.appendChild(iconHint);
 
-  const customIconLabel = mkLabel('Custom icon (SVG or emoji)', b.sub);
+  const customIconLabel = mkLabel('Custom icon', b.sub);
   customIconLabel.className += ' mt-3 block';
   wrap.appendChild(customIconLabel);
 
-  const customIconInput = document.createElement('textarea');
-  customIconInput.rows = 2;
-  customIconInput.value = link ? (link.customIcon || '') : '';
-  customIconInput.placeholder = 'Paste SVG markup or a single emoji — overrides icon slug';
-  customIconInput.className = `w-full rounded-lg border px-3 py-2 text-sm font-mono resize-none ${b.input}`;
-  wrap.appendChild(customIconInput);
+  // Holds the current customIcon value (data URL, SVG markup, or emoji)
+  let customIconValue = link ? (link.customIcon || '') : '';
+
+  const customIconRow = document.createElement('div');
+  customIconRow.className = 'flex items-center gap-3 mt-1';
+
+  const customIconPreview = document.createElement('div');
+  customIconPreview.className = 'w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-lg border border-dashed border-stone-300 dark:border-stone-600 overflow-hidden';
+
+  function refreshCustomIconPreview() {
+    customIconPreview.innerHTML = '';
+    if (!customIconValue) return;
+    if (customIconValue.startsWith('data:')) {
+      const img = document.createElement('img');
+      img.src = customIconValue;
+      img.className = 'w-full h-full object-contain';
+      customIconPreview.appendChild(img);
+    } else if (customIconValue.trim().startsWith('<')) {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(customIconValue.trim(), 'image/svg+xml');
+      const svgEl = doc.querySelector('svg');
+      if (svgEl) {
+        svgEl.setAttribute('width', '100%');
+        svgEl.setAttribute('height', '100%');
+        customIconPreview.appendChild(svgEl);
+      }
+    } else {
+      const span = document.createElement('span');
+      span.textContent = customIconValue.trim();
+      span.style.fontSize = '1.4rem';
+      customIconPreview.appendChild(span);
+    }
+  }
+  refreshCustomIconPreview();
+
+  customIconRow.appendChild(customIconPreview);
+
+  const customIconBtns = document.createElement('div');
+  customIconBtns.className = 'flex flex-col gap-1.5 flex-1';
+
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = 'image/*,.svg';
+  fileInput.className = 'hidden';
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      customIconValue = e.target.result;
+      refreshCustomIconPreview();
+    };
+    reader.readAsDataURL(file);
+  });
+  wrap.appendChild(fileInput);
+
+  const uploadBtn = document.createElement('button');
+  uploadBtn.type = 'button';
+  uploadBtn.textContent = customIconValue ? 'Replace image' : 'Upload image';
+  uploadBtn.className = `text-sm px-3 py-1.5 rounded-lg border ${b.input} hover:opacity-80 transition-opacity text-left`;
+  uploadBtn.onclick = () => fileInput.click();
+  customIconBtns.appendChild(uploadBtn);
+
+  const clearCustomBtn = document.createElement('button');
+  clearCustomBtn.type = 'button';
+  clearCustomBtn.textContent = 'Clear custom icon';
+  clearCustomBtn.className = `text-sm px-3 py-1.5 rounded-lg border border-transparent text-red-500 dark:text-red-400 hover:opacity-80 transition-opacity text-left ${customIconValue ? '' : 'opacity-40 pointer-events-none'}`;
+  clearCustomBtn.onclick = () => {
+    customIconValue = '';
+    refreshCustomIconPreview();
+    uploadBtn.textContent = 'Upload image';
+    clearCustomBtn.className = clearCustomBtn.className.replace('opacity-40 pointer-events-none', '') + ' opacity-40 pointer-events-none';
+  };
+  customIconBtns.appendChild(clearCustomBtn);
+
+  customIconRow.appendChild(customIconBtns);
+  wrap.appendChild(customIconRow);
 
   const customIconHint = document.createElement('p');
   customIconHint.className = `text-xs mt-1 ${b.sub}`;
-  customIconHint.textContent = 'When set, this takes priority over the icon slug above.';
+  customIconHint.textContent = 'Upload any image — stored as base64. Overrides icon slug. SVG markup or emoji also accepted.';
   wrap.appendChild(customIconHint);
+
+  // Fallback textarea for SVG / emoji
+  const svgEmojiToggle = document.createElement('button');
+  svgEmojiToggle.type = 'button';
+  svgEmojiToggle.textContent = 'Or paste SVG / emoji ▾';
+  svgEmojiToggle.className = `text-xs mt-1 ${b.sub} underline text-left`;
+  wrap.appendChild(svgEmojiToggle);
+
+  const svgEmojiArea = document.createElement('textarea');
+  svgEmojiArea.rows = 2;
+  svgEmojiArea.placeholder = 'Paste SVG markup or a single emoji';
+  svgEmojiArea.className = `hidden w-full rounded-lg border px-3 py-2 text-sm font-mono resize-none mt-1 ${b.input}`;
+  // Pre-populate textarea if current value is SVG/emoji (not a data URL)
+  if (customIconValue && !customIconValue.startsWith('data:')) {
+    svgEmojiArea.value = customIconValue;
+    svgEmojiArea.classList.remove('hidden');
+    svgEmojiToggle.textContent = 'Or paste SVG / emoji ▴';
+  }
+  svgEmojiArea.addEventListener('input', () => {
+    customIconValue = svgEmojiArea.value;
+    refreshCustomIconPreview();
+  });
+  svgEmojiToggle.addEventListener('click', () => {
+    const hidden = svgEmojiArea.classList.toggle('hidden');
+    svgEmojiToggle.textContent = hidden ? 'Or paste SVG / emoji ▾' : 'Or paste SVG / emoji ▴';
+  });
+  wrap.appendChild(svgEmojiArea);
+
+  // customIconInput shim — payload reads customIconValue directly
+  const customIconInput = { get value() { return customIconValue; } };
 
   // Icon background (squircle colour)
   let selectedIconBg = link ? (link.iconBg || 'none') : 'none';
@@ -1993,7 +2100,7 @@ function openLinkModal(groupId, link) {
       openMode: openModeSelect.value,
       icon: iconInput.value.trim().replace(/[^a-z0-9-]/g, ''),
       iconBg: selectedIconBg,
-      customIcon: customIconInput.value.trim().slice(0, 10000),
+      customIcon: customIconInput.value.trim().slice(0, 2097152),
       description: descInput.value.trim(),
       ping:    pingCheck.checked,
       pingUrl: pingCheck.checked ? pingUrlInput.value.trim() : '',
