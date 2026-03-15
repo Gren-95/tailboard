@@ -150,7 +150,7 @@ const WIDGET = {
      ═══════════════════════════════════════════════════════════════════════ -->
 
 <!-- Top bar -->
-<header id="topbar" class="sticky top-0 z-30 flex items-center justify-between px-6 py-3 shadow-sm border-b border-transparent transition-colors">
+<header id="topbar" class="sticky top-0 z-30 flex items-center justify-between px-3 sm:px-6 py-3 shadow-sm border-b border-transparent transition-colors">
   <div class="flex items-center gap-2">
     <img id="topbarFavicon" src="/api/favicon" alt="" class="w-6 h-6 object-contain flex-shrink-0" onerror="this.style.display='none'">
     <h1 id="dashTitle" class="text-xl font-semibold tracking-tight select-none"></h1>
@@ -562,7 +562,7 @@ function applyTheme(dark) {
 function applyBase(palette) {
   const t = TOPBAR[palette] || TOPBAR.stone;
   const topbar = document.getElementById('topbar');
-  topbar.className = `sticky top-0 z-30 flex items-center justify-between px-6 py-3 shadow-sm border-b transition-colors ${t.bar} ${t.text}`;
+  topbar.className = `sticky top-0 z-30 flex items-center justify-between px-3 sm:px-6 py-3 shadow-sm border-b transition-colors ${t.bar} ${t.text}`;
 
   const me = document.getElementById('menuEdit');
   if (me) {
@@ -675,7 +675,7 @@ function render() {
     const listOrder = (window.innerWidth < 640 && (cfg.widgetColumns || []).length > 0)
       ? buildWidgetColumns(cfg).flat()
       : buildWidgetOrder(cfg);
-    container.className = 'p-6 columns-1 gap-5';
+    container.className = 'p-3 sm:p-6 columns-1 gap-3 sm:gap-5';
     listOrder.forEach(id => {
       const card = resolveCard(id, cfg);
       if (!card) return;
@@ -917,7 +917,8 @@ function renderTagFilterBar() {
 function renderGroupCard(group) {
   const cfg = state.config;
   const b = FIXED;
-  const isList = cfg.viewMode === 'list' || window.innerWidth < 640;
+  const isMobile = window.innerWidth < 640;
+  const isList = cfg.viewMode === 'list' || isMobile;
   const acc = ACCENT[group.accent] || ACCENT.slate;
 
   const section = document.createElement('div');
@@ -1040,7 +1041,7 @@ function renderGroupCard(group) {
 
     group.links.forEach((link) => {
       const row = document.createElement('div');
-      row.className = `link-row flex items-center gap-3 ${isList ? 'px-2 py-1.5' : 'px-3 py-2.5'} ${acc.border} transition-opacity duration-100`;
+      row.className = `link-row flex items-center gap-3 ${isMobile ? 'px-3 py-3' : isList ? 'px-2 py-1.5' : 'px-3 py-2.5'} ${acc.border} transition-opacity duration-100`;
       row.dataset.linkId = link.id;
 
       if (state.editMode) {
@@ -1115,7 +1116,7 @@ function renderGroupCard(group) {
       }
 
       // Icon (includes status dot)
-      const iconWrap = mkIconWrap(link, isList);
+      const iconWrap = mkIconWrap(link, isList && !isMobile);
 
       // Text
       const textWrap = document.createElement('div');
@@ -2691,12 +2692,14 @@ function renderMd(text) {
   const lines = (text || '').split('\n');
   let out = '', inUl = false, inCbl = false;
   lines.forEach((line, idx) => {
-    if (/^[-*] \[[ xX]\] /.test(line)) {
-      // Checkbox list item
+    const cbWithDash = /^[-*] \[[ xX]\] /.test(line);
+    const cbBare     = /^\[[ xX]\] /.test(line);
+    if (cbWithDash || cbBare) {
+      // Checkbox item — supports both "- [ ] task" and "[ ] task"
       if (inUl)  { out += '</ul>'; inUl = false; }
       if (!inCbl) { out += '<ul class="space-y-1.5 my-1">'; inCbl = true; }
-      const checked = /^[-*] \[[xX]\] /.test(line);
-      const label   = mdInline(line.slice(6));
+      const checked = cbWithDash ? /^[-*] \[[xX]\] /.test(line) : /^\[[xX]\] /.test(line);
+      const label   = mdInline(cbWithDash ? line.slice(6) : line.slice(4));
       out += `<li class="flex items-start gap-2">` +
         `<input type="checkbox" data-cb-line="${idx}" class="mt-0.5 flex-shrink-0 w-3.5 h-3.5 rounded cursor-pointer accent-indigo-500"${checked ? ' checked' : ''}>` +
         `<span class="${checked ? 'line-through opacity-50' : ''}">${label}</span></li>`;
@@ -2771,9 +2774,13 @@ function renderNoteCard(note) {
         const lines = (note.content || '').split('\n');
         if (lines[lineIdx] !== undefined) {
           if (cb.checked) {
-            lines[lineIdx] = lines[lineIdx].replace(/^([-*] )\[ \]/, '$1[x]');
+            lines[lineIdx] = lines[lineIdx]
+              .replace(/^([-*] )\[ \]/, '$1[x]')
+              .replace(/^\[ \]/, '[x]');
           } else {
-            lines[lineIdx] = lines[lineIdx].replace(/^([-*] )\[[xX]\]/, '$1[ ]');
+            lines[lineIdx] = lines[lineIdx]
+              .replace(/^([-*] )\[[xX]\]/, '$1[ ]')
+              .replace(/^\[[xX]\]/, '[ ]');
           }
           note.content = lines.join('\n');
           const cfgNote = (state.config.notes || []).find(n => n.id === note.id);
@@ -2982,7 +2989,7 @@ function openNoteModal(note) {
 
   const contentHint = document.createElement('p');
   contentHint.className = `text-xs mb-1 ${b.sub}`;
-  contentHint.textContent = 'Supports **bold**, *italic*, `code`, - lists, and - [ ] / - [x] checkboxes.';
+  contentHint.textContent = 'Supports **bold**, *italic*, `code`, - lists, and [ ] / [x] checkboxes.';
   wrap.appendChild(contentHint);
 
   const contentArea = document.createElement('textarea');
