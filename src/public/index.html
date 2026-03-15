@@ -2689,17 +2689,29 @@ function mdInline(s) {
 
 function renderMd(text) {
   const lines = (text || '').split('\n');
-  let out = '', inUl = false;
-  for (const line of lines) {
-    if (/^[-*] /.test(line)) {
+  let out = '', inUl = false, inCbl = false;
+  lines.forEach((line, idx) => {
+    if (/^[-*] \[[ xX]\] /.test(line)) {
+      // Checkbox list item
+      if (inUl)  { out += '</ul>'; inUl = false; }
+      if (!inCbl) { out += '<ul class="space-y-1.5 my-1">'; inCbl = true; }
+      const checked = /^[-*] \[[xX]\] /.test(line);
+      const label   = mdInline(line.slice(6));
+      out += `<li class="flex items-start gap-2">` +
+        `<input type="checkbox" data-cb-line="${idx}" class="mt-0.5 flex-shrink-0 w-3.5 h-3.5 rounded cursor-pointer accent-indigo-500"${checked ? ' checked' : ''}>` +
+        `<span class="${checked ? 'line-through opacity-50' : ''}">${label}</span></li>`;
+    } else if (/^[-*] /.test(line)) {
+      if (inCbl) { out += '</ul>'; inCbl = false; }
       if (!inUl) { out += '<ul class="list-disc list-inside space-y-0.5">'; inUl = true; }
       out += `<li>${mdInline(line.slice(2))}</li>`;
     } else {
-      if (inUl) { out += '</ul>'; inUl = false; }
+      if (inUl)  { out += '</ul>'; inUl = false; }
+      if (inCbl) { out += '</ul>'; inCbl = false; }
       out += line ? `<p>${mdInline(line)}</p>` : '<br>';
     }
-  }
-  if (inUl) out += '</ul>';
+  });
+  if (inUl)  out += '</ul>';
+  if (inCbl) out += '</ul>';
   return out;
 }
 
@@ -2750,7 +2762,30 @@ function renderNoteCard(note) {
   // Body
   const body = document.createElement('div');
   body.className = `px-4 py-3 text-sm ${b.text} max-h-48 overflow-y-auto overflow-x-hidden break-words`;
-  body.innerHTML = renderMd(note.content || '');
+
+  function rebuildNoteBody() {
+    body.innerHTML = renderMd(note.content || '');
+    body.querySelectorAll('input[type=checkbox][data-cb-line]').forEach(cb => {
+      cb.addEventListener('change', async () => {
+        const lineIdx = parseInt(cb.dataset.cbLine, 10);
+        const lines = (note.content || '').split('\n');
+        if (lines[lineIdx] !== undefined) {
+          if (cb.checked) {
+            lines[lineIdx] = lines[lineIdx].replace(/^([-*] )\[ \]/, '$1[x]');
+          } else {
+            lines[lineIdx] = lines[lineIdx].replace(/^([-*] )\[[xX]\]/, '$1[ ]');
+          }
+          note.content = lines.join('\n');
+          const cfgNote = (state.config.notes || []).find(n => n.id === note.id);
+          if (cfgNote) cfgNote.content = note.content;
+          await api('PUT', `/api/notes/${note.id}`, { content: note.content });
+          rebuildNoteBody();
+        }
+      });
+    });
+  }
+  rebuildNoteBody();
+
   card.appendChild(body);
   return card;
 }
@@ -2947,7 +2982,7 @@ function openNoteModal(note) {
 
   const contentHint = document.createElement('p');
   contentHint.className = `text-xs mb-1 ${b.sub}`;
-  contentHint.textContent = 'Supports **bold**, *italic*, `code`, and - lists.';
+  contentHint.textContent = 'Supports **bold**, *italic*, `code`, - lists, and - [ ] / - [x] checkboxes.';
   wrap.appendChild(contentHint);
 
   const contentArea = document.createElement('textarea');
