@@ -658,7 +658,8 @@ document.getElementById('iframeViewerClose').addEventListener('click', () => {
 function render() {
   const cfg = state.config;
   const b = FIXED;
-  const isList = cfg.viewMode === 'list' || window.innerWidth < 640;
+  const isMobile = window.innerWidth < 640;
+  const isList = cfg.viewMode === 'list' || isMobile;
 
   document.title = cfg.title || 'Tailboard';
   document.getElementById('dashTitle').textContent = cfg.title || 'Tailboard';
@@ -680,7 +681,7 @@ function render() {
       const btn = document.createElement('button');
       btn.textContent = label;
       btn.title = title;
-      btn.className = `w-8 h-8 flex items-center justify-center rounded-lg text-sm font-bold bg-black/40 dark:bg-white/25 text-white transition-opacity ${disabled ? 'opacity-20 pointer-events-none' : 'opacity-80 active:opacity-100'}`;
+      btn.className = `w-9 h-9 flex items-center justify-center rounded-lg text-base font-bold border border-stone-300 dark:border-stone-600 ${FIXED.sub} transition-opacity ${disabled ? 'opacity-20 pointer-events-none' : 'opacity-60 active:opacity-100'}`;
       if (!disabled) btn.addEventListener('click', onClick);
       return btn;
     };
@@ -696,15 +697,15 @@ function render() {
       if (state.editMode) attachWidgetDnd(card, id);
 
       if (state.editMode && isMobile) {
-        // Wrap in a relative container so the arrow strip sits outside overflow:hidden
         const wrapper = document.createElement('div');
-        wrapper.className = 'relative break-inside-avoid mb-4';
+        wrapper.className = 'break-inside-avoid mb-2';
         wrapper.appendChild(card);
 
-        const strip = document.createElement('div');
-        strip.className = 'absolute top-1.5 right-1.5 flex gap-1 z-10';
+        // Arrow bar sits below the card — no overlap with card header buttons
+        const bar = document.createElement('div');
+        bar.className = 'flex items-center justify-between px-1 py-1';
 
-        strip.appendChild(mkArrow('▲', 'Move up', widgetIdx === 0, async () => {
+        bar.appendChild(mkArrow('▲', 'Move up', widgetIdx === 0, async () => {
           const cols = buildWidgetColumns(state.config);
           const flat = cols.flat();
           const i = flat.indexOf(id);
@@ -715,7 +716,7 @@ function render() {
           await saveColumns(newCols);
         }));
 
-        strip.appendChild(mkArrow('▼', 'Move down', widgetIdx === listOrder.length - 1, async () => {
+        bar.appendChild(mkArrow('▼', 'Move down', widgetIdx === listOrder.length - 1, async () => {
           const cols = buildWidgetColumns(state.config);
           const flat = cols.flat();
           const i = flat.indexOf(id);
@@ -726,7 +727,7 @@ function render() {
           await saveColumns(newCols);
         }));
 
-        wrapper.appendChild(strip);
+        wrapper.appendChild(bar);
         container.appendChild(wrapper);
       } else {
         card.classList.add('break-inside-avoid', 'mb-4');
@@ -1280,7 +1281,9 @@ function renderClockCard() {
   hTitle.className = 'font-semibold text-sm tracking-wide flex-1';
   hTitle.textContent = 'Clock';
   hdr.appendChild(hTitle);
-  hdr.appendChild(mkBtn('⚙', 'Weather settings', 'opacity-70 hover:opacity-100 text-base px-1 transition-opacity', () => openWeatherModal()));
+  if (state.editMode) {
+    hdr.appendChild(mkBtn('⚙', 'Weather settings', 'opacity-70 hover:opacity-100 text-base px-1 transition-opacity', () => openWeatherModal()));
+  }
   if (state.editMode) {
     const handle = mkHandle('text-white/60 hover:text-white/90 text-base');
     handle.draggable = true;
