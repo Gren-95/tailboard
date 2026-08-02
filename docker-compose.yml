@@ -11,6 +11,7 @@ services:
       - NODE_ENV=production
       - AUTH_USER=admin
       - AUTH_PASS=123
+      # - SPLIT_LINKS=true   # optional — adds a per-link Mobile URL field
 
 volumes:
   tailboard-data:

@@ -64,6 +64,30 @@ volumes:
 | `ICONS_DIR`    | `/data/icons`        | Directory for cached dashboard icons             |
 | `AUTH_USER`    | _(unset)_            | Login username — auth disabled when blank        |
 | `AUTH_PASS`    | _(unset)_            | Login password — auth disabled when blank        |
+| `SPLIT_LINKS`  | `false`              | Enable per-link **Mobile URL** — see below       |
+
+## Split Links (desktop / mobile)
+
+Set `SPLIT_LINKS=true` to give every link an optional second address used on small
+screens. Useful when the same service is reached differently depending on where you
+are — for example a plain `http://` LAN address on a desktop that never leaves the
+network, and an `https://` hostname on a phone that roams off it.
+
+```yaml
+environment:
+  - SPLIT_LINKS=true
+```
+
+With the flag on, the link editor gains a **Mobile URL** field. When set, it is used
+instead of the main URL on viewports narrower than 640px — the same breakpoint the
+dashboard already uses to switch to its mobile layout. Leave it empty and the link
+behaves as it always has.
+
+Accepted truthy values: `true`, `1`, `yes`, `on` (case-insensitive). Anything else,
+including unset, leaves the feature off.
+
+The mobile address is stored whether or not the flag is enabled, so turning
+`SPLIT_LINKS` off and back on never discards what you entered.
 
 ## Keyboard Shortcuts
 

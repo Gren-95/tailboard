@@ -305,7 +305,7 @@ const WIDGET = {
 <script>
 // ─── State ──────────────────────────────────────────────────────────────────
 
-let state = { config: null, editMode: false, activeTag: null };
+let state = { config: null, editMode: false, activeTag: null, features: { splitLinks: false } };
 
 // Drag-and-drop tracking
 let dnd = { type: null, id: null, groupId: null };
@@ -356,6 +356,8 @@ async function reload() {
   if (spinner)   spinner.classList.remove('hidden');
   try {
     state.config = await api('GET', '/api/config');
+    // Env-derived flags; a failure here must not stop the dashboard rendering.
+    try { state.features = await api('GET', '/api/features'); } catch (_) {}
     render();
     applyStatusDots();
   } finally {
@@ -623,14 +625,31 @@ function applyBase(palette) {
 
 // ─── Link open helper ─────────────────────────────────────────────────────────
 
+// Resolve which address a link should use. With SPLIT_LINKS enabled a link may
+// carry a separate `mobileUrl` for small screens — e.g. http:// on the LAN desktop,
+// https:// on a phone that roams off-network. Falls back to `url` when the feature
+// is off, on desktop, or when no mobile address was set, so existing configs behave
+// exactly as before. 640px matches the isMobile threshold used for layout.
+function isMobileView() {
+  return window.innerWidth < 640;
+}
+
+function linkUrl(link) {
+  if (state.features && state.features.splitLinks && isMobileView() && link.mobileUrl) {
+    return link.mobileUrl;
+  }
+  return link.url;
+}
+
 function openLink(link) {
   const mode = link.openMode || 'tab';
+  const target = linkUrl(link);
   if (mode === 'self') {
-    window.location.href = link.url;
+    window.location.href = target;
   } else if (mode === 'modal') {
     openIframeViewer(link);
   } else {
-    window.open(link.url, '_blank', 'noopener');
+    window.open(target, '_blank', 'noopener');
   }
 }
 
@@ -643,8 +662,9 @@ function openIframeViewer(link) {
     icon.classList.add('hidden');
   }
   document.getElementById('iframeViewerTitle').textContent = link.name;
-  document.getElementById('iframeViewerExternal').href = link.url;
-  document.getElementById('iframeViewerFrame').src = link.url;
+  const target = linkUrl(link);
+  document.getElementById('iframeViewerExternal').href = target;
+  document.getElementById('iframeViewerFrame').src = target;
   document.getElementById('iframeViewer').classList.remove('hidden');
 }
 
@@ -1594,7 +1614,7 @@ function renderPinned() {
       container.appendChild(chip);
     } else {
       const chip = document.createElement('a');
-      chip.href = link.url;
+      chip.href = linkUrl(link);
       chip.target = (link.openMode === 'self') ? '_self' : '_blank';
       chip.rel = 'noopener';
       chip.className = `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium border ${FIXED.card} ${FIXED.text} hover:bg-black/5 dark:hover:bg-white/5 transition-colors`;
@@ -1829,6 +1849,22 @@ function openLinkModal(groupId, link) {
   const urlInput = mkInput(link ? link.url : '', 'http://192.168.1.10:32400', b);
   urlInput.type = 'url';
   wrap.appendChild(urlInput);
+
+  // Mobile URL — only offered when SPLIT_LINKS is enabled. The input is always
+  // created so the save handler can read it unconditionally; it just stays out of
+  // the DOM (and so keeps the link's existing value) when the feature is off.
+  const mobileUrlInput = mkInput(link ? (link.mobileUrl || '') : '', 'https://plex.example.com', b);
+  mobileUrlInput.type = 'url';
+  if (state.features && state.features.splitLinks) {
+    const mobileUrlLabel = mkLabel('Mobile URL (optional)', b.sub);
+    mobileUrlLabel.className += ' mt-3 block';
+    wrap.appendChild(mobileUrlLabel);
+    wrap.appendChild(mobileUrlInput);
+    const hint = document.createElement('p');
+    hint.className = `text-xs mt-1 ${b.sub}`;
+    hint.textContent = 'Used instead of URL on screens under 640px. Leave empty to use the URL above everywhere.';
+    wrap.appendChild(hint);
+  }
 
   // Open mode
   const openModeLabel = mkLabel('Open in', b.sub);
@@ -2166,6 +2202,7 @@ function openLinkModal(groupId, link) {
     if (!url) { urlInput.focus(); return; }
     const payload = {
       name, url,
+      mobileUrl: mobileUrlInput.value.trim(),
       openMode: openModeSelect.value,
       icon: iconInput.value.trim().replace(/[^a-z0-9-]/g, ''),
       iconBg: selectedIconBg,
