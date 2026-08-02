@@ -82,6 +82,15 @@ const FIXED = {
   sub:  'text-stone-500 dark:text-stone-400',
 };
 
+// Per-widget accent. Widgets fall back to the global base palette when they have
+// no accent of their own, so existing configs keep looking exactly as before.
+function widgetBar(accent, cfg) {
+  const a = ACCENT[accent];
+  if (a) return { bar: a.header, text: '' };   // ACCENT.header already sets text-white
+  const t = TOPBAR[(cfg && cfg.basePalette) || 'stone'] || TOPBAR.stone;
+  return { bar: t.bar, text: t.text };
+}
+
 // ACCENT[color] — group header bar + left border stripe on link cards
 const ACCENT = {
   stone:   { header:'bg-stone-600 text-white',   swatch:'bg-stone-500',   border:'border-l-4 border-stone-500'   },
@@ -152,63 +161,72 @@ const WIDGET = {
 <!-- Top bar -->
 <header id="topbar" class="sticky top-0 z-30 flex items-center justify-between px-3 sm:px-6 py-3 shadow-sm border-b border-transparent transition-colors">
   <div class="flex items-center gap-2">
+    <!-- Mobile widget drawer toggle. Hidden by default; render() reveals it only on
+         small screens when there is at least one non-group widget to show. -->
+    <button id="sidebarToggle" title="Widgets"
+      class="hidden rounded-lg p-2 -ml-1 opacity-70 hover:opacity-100 transition-opacity">
+      <svg class="w-5 h-5" fill="currentColor" aria-hidden="true"><use href="/bootstrap-icons.svg#layout-sidebar"/></svg>
+    </button>
     <img id="topbarFavicon" src="/api/favicon" alt="" class="w-6 h-6 object-contain flex-shrink-0" onerror="this.style.display='none'">
     <h1 id="dashTitle" class="text-xl font-semibold tracking-tight select-none"></h1>
   </div>
   <div class="relative">
     <button id="menuBtn" title="Menu"
       class="rounded-lg p-2 opacity-70 hover:opacity-100 transition-opacity">
-      <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
-      </svg>
+      <svg class="w-5 h-5" fill="currentColor" aria-hidden="true"><use href="/bootstrap-icons.svg#list"/></svg>
     </button>
     <div id="menuDropdown"
       class="hidden absolute right-0 top-full mt-1 w-48 rounded-xl shadow-xl overflow-hidden border bg-white dark:bg-stone-800 border-stone-200 dark:border-stone-700 py-1 z-50">
       <button id="menuSearch"
         class="w-full flex items-center justify-between gap-3 px-4 py-2.5 text-sm text-stone-700 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-700/60 transition-colors">
         <span class="flex items-center gap-3">
-          <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/></svg>
+          <svg class="w-4 h-4 flex-shrink-0" fill="currentColor" aria-hidden="true"><use href="/bootstrap-icons.svg#search"/></svg>
           Search
         </span>
         <kbd class="text-xs font-mono opacity-40">⌃K</kbd>
       </button>
       <button id="menuSettings"
         class="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-700/60 transition-colors">
-        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/></svg>
+        <svg class="w-4 h-4 flex-shrink-0" fill="currentColor" aria-hidden="true"><use href="/bootstrap-icons.svg#gear"/></svg>
         Settings
       </button>
       <button id="menuTheme"
         class="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-700/60 transition-colors">
-        <svg id="menuThemeIconMoon" class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z"/></svg>
-        <svg id="menuThemeIconSun" class="hidden w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z"/></svg>
+        <svg id="menuThemeIconMoon" class="w-4 h-4 flex-shrink-0" fill="currentColor" aria-hidden="true"><use href="/bootstrap-icons.svg#moon"/></svg>
+        <svg id="menuThemeIconSun" class="hidden w-4 h-4 flex-shrink-0" fill="currentColor" aria-hidden="true"><use href="/bootstrap-icons.svg#sun"/></svg>
         <span id="menuThemeLabel">Dark</span>
       </button>
       <hr class="my-1 border-stone-200 dark:border-stone-700">
       <button id="menuEdit"
         class="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-700/60 transition-colors">
-        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10"/></svg>
+        <svg class="w-4 h-4 flex-shrink-0" fill="currentColor" aria-hidden="true"><use href="/bootstrap-icons.svg#pencil"/></svg>
         Edit
       </button>
       <button id="menuShortcuts"
         class="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-700/60 transition-colors">
-        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0 0 21 18V6a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 6v12a2.25 2.25 0 0 0 2.25 2.25Z"/></svg>
+        <svg class="w-4 h-4 flex-shrink-0" fill="currentColor" aria-hidden="true"><use href="/bootstrap-icons.svg#keyboard"/></svg>
         Shortcuts
       </button>
       <button id="menuViewToggle"
         class="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-700/60 transition-colors">
-        <svg id="menuViewIconList" class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0ZM3.75 12h.007v.008H3.75V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm-.375 5.25h.007v.008H3.75v-.008Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"/></svg>
-        <svg id="menuViewIconGrid" class="hidden w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z"/></svg>
+        <svg class="w-4 h-4 flex-shrink-0" fill="currentColor" aria-hidden="true"><use href="/bootstrap-icons.svg#list-ul"/></svg>
+        <svg id="menuViewIconGrid" class="hidden w-4 h-4 flex-shrink-0" fill="currentColor" aria-hidden="true"><use href="/bootstrap-icons.svg#grid-3x3-gap"/></svg>
         <span id="menuViewLabel">List</span>
       </button>
       <button id="menuClockToggle"
         class="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-700/60 transition-colors">
-        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
+        <svg class="w-4 h-4 flex-shrink-0" fill="currentColor" aria-hidden="true"><use href="/bootstrap-icons.svg#clock"/></svg>
         <span id="menuClockLabel">Clock</span>
+      </button>
+      <button id="menuWeatherToggle"
+        class="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-700/60 transition-colors">
+        <svg class="w-4 h-4 flex-shrink-0" fill="currentColor" aria-hidden="true"><use href="/bootstrap-icons.svg#cloud-sun"/></svg>
+        <span id="menuWeatherLabel">Weather</span>
       </button>
       <div id="menuNotesToggleContainer"></div>
       <div class="flex items-center justify-between px-4 py-2">
         <span class="flex items-center gap-3 text-xs font-medium text-stone-400 dark:text-stone-500">
-          <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607ZM10.5 7.5v6m3-3h-6"/></svg>
+          <svg class="w-4 h-4 flex-shrink-0" fill="currentColor" aria-hidden="true"><use href="/bootstrap-icons.svg#journal-text"/></svg>
           Zoom
         </span>
         <div class="flex items-center gap-1">
@@ -220,7 +238,7 @@ const WIDGET = {
       <hr id="menuLogoutSep" class="hidden my-1 border-stone-200 dark:border-stone-700">
       <a id="menuLogout" href="/logout"
         class="hidden flex items-center gap-3 px-4 py-2.5 text-sm text-stone-500 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-700/60 transition-colors">
-        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15M12 9l-3 3m0 0 3 3m-3-3h12.75"/></svg>
+        <svg class="w-4 h-4 flex-shrink-0" fill="currentColor" aria-hidden="true"><use href="/bootstrap-icons.svg#box-arrow-right"/></svg>
         Sign out
       </a>
     </div>
@@ -246,6 +264,30 @@ const WIDGET = {
 <!-- Main grid -->
 <main id="groupsContainer" class="p-6 grid gap-5 items-start transition-opacity duration-150"></main>
 
+<!-- Mobile widget drawer. Off-canvas to the left; render() fills it with every
+     non-group widget on small screens so the link groups get the full width.
+     Desktop is untouched — the drawer is never populated above 640px. -->
+<div id="sidebarBackdrop" class="hidden fixed inset-0 z-40 bg-black/40 transition-opacity"></div>
+<!-- text-stone-900 dark:text-stone-50 matters: <body> sets a background but no text
+     colour, and the topbar only gets its colour from applyBase(). Without it the
+     icons here inherit the browser default black and vanish on the dark background. -->
+<aside id="mobileSidebar"
+  class="fixed top-0 left-0 z-50 h-full w-[85vw] max-w-sm overflow-y-auto overscroll-contain
+         bg-white dark:bg-stone-950 text-stone-900 dark:text-stone-50
+         border-r border-stone-200 dark:border-stone-800
+         shadow-2xl -translate-x-full transition-transform duration-200 ease-out">
+  <div class="sticky top-0 z-10 flex items-center justify-between px-4 py-3 border-b
+              border-stone-200 dark:border-stone-800
+              bg-white dark:bg-stone-950 text-stone-900 dark:text-stone-50">
+    <span class="text-sm font-semibold tracking-tight">Widgets</span>
+    <button id="sidebarClose" title="Close"
+      class="rounded-lg p-1.5 text-stone-700 dark:text-stone-200 opacity-80 hover:opacity-100 transition-opacity">
+      <svg class="w-5 h-5" fill="currentColor" aria-hidden="true"><use href="/bootstrap-icons.svg#x-lg"/></svg>
+    </button>
+  </div>
+  <div id="sidebarContent" class="p-3 space-y-3"></div>
+</aside>
+
 <!-- Page-level reload spinner (shown during reload(), hidden when render completes) -->
 <div id="pageSpinner" class="hidden fixed inset-0 z-40 pointer-events-none flex items-center justify-center">
   <div class="w-9 h-9 rounded-full border-[3px] border-stone-200 dark:border-stone-700 border-t-indigo-500 animate-spin"></div>
@@ -265,11 +307,11 @@ const WIDGET = {
     <span id="iframeViewerTitle" class="text-sm font-medium truncate flex-1 text-stone-800 dark:text-stone-200"></span>
     <a id="iframeViewerExternal" href="#" target="_blank" rel="noopener" title="Open in new tab"
       class="flex-shrink-0 p-1.5 rounded-lg text-stone-500 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-700 transition-colors">
-      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/></svg>
+      <svg class="w-4 h-4" fill="currentColor" aria-hidden="true"><use href="/bootstrap-icons.svg#box-arrow-up-right"/></svg>
     </a>
     <button id="iframeViewerClose" title="Close (Esc)"
       class="flex-shrink-0 p-1.5 rounded-lg text-stone-500 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-700 transition-colors">
-      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
+      <svg class="w-4 h-4" fill="currentColor" aria-hidden="true"><use href="/bootstrap-icons.svg#x-lg"/></svg>
     </button>
   </div>
   <iframe id="iframeViewerFrame" src="" class="flex-1 w-full border-0" allow="fullscreen"></iframe>
@@ -280,9 +322,7 @@ const WIDGET = {
   <div class="w-full max-w-xl rounded-2xl shadow-2xl overflow-hidden bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-700/80">
     <!-- Input bar -->
     <div class="flex items-center gap-3 px-4 py-3.5 border-b border-stone-200 dark:border-stone-700/80">
-      <svg class="w-4 h-4 flex-shrink-0 text-stone-400 dark:text-stone-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-      </svg>
+      <svg class="w-4 h-4 flex-shrink-0 text-stone-400 dark:text-stone-500" fill="currentColor" aria-hidden="true"><use href="/bootstrap-icons.svg#search"/></svg>
       <input id="searchInput" type="text" placeholder="Search links…" autocomplete="off"
         class="flex-1 bg-transparent text-sm text-stone-900 dark:text-stone-50 placeholder-stone-400 dark:placeholder-stone-500 outline-none" />
       <span id="searchCount" class="text-xs text-stone-400 dark:text-stone-500 tabular-nums"></span>
@@ -420,6 +460,7 @@ function reorder(ids, fromId, targetId, pos) {
 function buildWidgetOrder(cfg) {
   const allIds = [];
   if (cfg.showClock) allIds.push('clock');
+  if (cfg.showWeather) allIds.push('weather');
   const hiddenNotesSet = new Set(cfg.hiddenNotes || []);
   (cfg.notes || []).forEach(n => { if (!hiddenNotesSet.has(n.id)) allIds.push(n.id); });
   (cfg.feeds      || []).forEach(f => allIds.push(f.id));
@@ -594,6 +635,12 @@ function applyBase(palette) {
     ct.className = `w-full flex items-center gap-3 px-4 py-2.5 text-sm ${clockOn ? 'font-semibold text-indigo-600 dark:text-indigo-400' : 'text-stone-700 dark:text-stone-200'} hover:bg-stone-100 dark:hover:bg-stone-700/60 transition-colors`;
   }
 
+  const wt = document.getElementById('menuWeatherToggle');
+  if (wt) {
+    const wxOn = !!(state.config && state.config.showWeather);
+    wt.className = `w-full flex items-center gap-3 px-4 py-2.5 text-sm ${wxOn ? 'font-semibold text-indigo-600 dark:text-indigo-400' : 'text-stone-700 dark:text-stone-200'} hover:bg-stone-100 dark:hover:bg-stone-700/60 transition-colors`;
+  }
+
   const notesContainer = document.getElementById('menuNotesToggleContainer');
   if (notesContainer && state.config) {
     const hiddenNotesSet = new Set(state.config.hiddenNotes || []);
@@ -639,6 +686,38 @@ function linkUrl(link) {
     return link.mobileUrl;
   }
   return link.url;
+}
+
+// ─── Mobile widget drawer ─────────────────────────────────────────────────────
+// On phones the widgets (clock, notes, feeds, iframes, countdowns, calendars) push
+// the link groups far down the page. render() moves them into this off-canvas
+// drawer instead, leaving the main column for links alone. Desktop is untouched.
+
+function setSidebar(open) {
+  const aside = document.getElementById('mobileSidebar');
+  const back  = document.getElementById('sidebarBackdrop');
+  if (!aside || !back) return;
+  aside.classList.toggle('-translate-x-full', !open);
+  back.classList.toggle('hidden', !open);
+  // Stop the page behind the drawer scrolling while it is open.
+  document.body.classList.toggle('overflow-hidden', open);
+}
+
+function initSidebar() {
+  const toggle = document.getElementById('sidebarToggle');
+  const close  = document.getElementById('sidebarClose');
+  const back   = document.getElementById('sidebarBackdrop');
+  if (toggle) toggle.addEventListener('click', () => {
+    const hidden = document.getElementById('mobileSidebar').classList.contains('-translate-x-full');
+    setSidebar(hidden);
+  });
+  if (close) close.addEventListener('click', () => setSidebar(false));
+  if (back)  back.addEventListener('click',  () => setSidebar(false));
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') setSidebar(false);
+  });
+  // Rotating to landscape / resizing past the breakpoint must not strand the drawer.
+  window.addEventListener('resize', () => { if (!isMobileView()) setSidebar(false); });
 }
 
 function openLink(link) {
@@ -688,6 +767,15 @@ function render() {
 
   const container = document.getElementById('groupsContainer');
   container.innerHTML = '';
+
+  // Widget drawer: on phones the non-group widgets go into the off-canvas panel so
+  // the link groups get the column to themselves. Skipped in edit mode, where the
+  // single-column layout with its move-up/down arrows is how reordering works.
+  const sidebar     = document.getElementById('sidebarContent');
+  const sidebarBtn  = document.getElementById('sidebarToggle');
+  const useSidebar  = isMobile && !state.editMode;
+  if (sidebar) sidebar.innerHTML = '';
+  if (!useSidebar) { setSidebar(false); if (sidebarBtn) sidebarBtn.classList.add('hidden'); }
 
   if (isList) {
     // List mode: on mobile use widgetColumns flattened (preserves desktop column order);
@@ -751,9 +839,19 @@ function render() {
         container.appendChild(wrapper);
       } else {
         card.classList.add('break-inside-avoid', 'mb-4');
-        container.appendChild(card);
+        // A widget id that resolves to a link group stays in the main column;
+        // everything else (clock/notes/feeds/iframes/countdowns/calendars) goes
+        // into the drawer when it is in use.
+        const isGroup = (cfg.groups || []).some(g => g.id === id);
+        if (useSidebar && !isGroup && sidebar) sidebar.appendChild(card);
+        else container.appendChild(card);
       }
     });
+    if (useSidebar && sidebarBtn) {
+      // Only offer the drawer when something actually landed in it.
+      sidebarBtn.classList.toggle('hidden', sidebar.childElementCount === 0);
+      if (sidebar.childElementCount === 0) setSidebar(false);
+    }
     if (state.editMode) {
       const addBtn = document.createElement('button');
       addBtn.className = `rounded-xl border-2 border-dashed border-stone-300 dark:border-stone-600 p-6 text-sm font-medium ${FIXED.sub} hover:bg-black/5 dark:hover:bg-white/5 transition-colors w-full break-inside-avoid mb-5`;
@@ -912,15 +1010,14 @@ function render() {
   (cfg.feeds     || []).forEach(f => fetchRss(f));
   (cfg.calendars || []).forEach(c => fetchIcal(c));
 
-  if (cfg.showClock) {
-    requestAnimationFrame(updateClock);
-    fetchWeather();
-  }
+  if (cfg.showClock) requestAnimationFrame(updateClock);
+  if (cfg.showWeather) fetchWeather();
 }
 
 // Resolve a widget ID to its rendered card element (or null)
 function resolveCard(id, cfg) {
   if (id === 'clock' && cfg.showClock)                                    return renderClockCard();
+  if (id === 'weather' && cfg.showWeather)                                return renderWeatherCard();
   const n = (cfg.notes      || []).find(x => x.id === id); if (n) return renderNoteCard(n);
   const f = (cfg.feeds      || []).find(x => x.id === id); if (f) return renderFeedCard(f);
   const i = (cfg.iframes    || []).find(x => x.id === id); if (i) return renderIframeCard(i);
@@ -1290,7 +1387,7 @@ function renderGroupCard(group) {
 
 function renderClockCard() {
   const cfg = state.config;
-  const t   = TOPBAR[cfg.basePalette] || TOPBAR.stone;
+  const t = widgetBar(cfg.clockAccent, cfg);
   const card = document.createElement('div');
   card.className = `group-section rounded-xl overflow-hidden border shadow-md ${FIXED.card}`;
 
@@ -1301,9 +1398,6 @@ function renderClockCard() {
   hTitle.className = 'font-semibold text-sm tracking-wide flex-1';
   hTitle.textContent = 'Clock';
   hdr.appendChild(hTitle);
-  if (state.editMode) {
-    hdr.appendChild(mkBtn('⚙', 'Weather settings', 'opacity-70 hover:opacity-100 text-base px-1 transition-opacity', () => openWeatherModal()));
-  }
   if (state.editMode) {
     const handle = mkHandle('text-white/60 hover:text-white/90 text-base');
     handle.draggable = true;
@@ -1337,10 +1431,50 @@ function renderClockCard() {
   dateEl.className = `${WIDGET.date} ${FIXED.sub}`;
   timeWrap.appendChild(dateEl);
   body.appendChild(timeWrap);
-  const wxEl = document.createElement('div');
-  wxEl.id = 'clockCardWeather';
-  wxEl.className = 'flex-1 min-w-0 sm:mt-3';
-  body.appendChild(wxEl);
+  card.appendChild(body);
+  return card;
+}
+
+// ─── Weather card ─────────────────────────────────────────────────────────────
+// Split out of the clock card so the two can be positioned and toggled
+// independently. Weather data still comes from /api/weather; only the container
+// moved. The settings gear lives here now rather than on the clock header.
+
+function renderWeatherCard() {
+  const cfg  = state.config;
+  const t = widgetBar(cfg.weatherAccent, cfg);
+  const card = document.createElement('div');
+  card.className = `group-section rounded-xl overflow-hidden border shadow-md ${FIXED.card}`;
+
+  const hdr = document.createElement('div');
+  hdr.className = `flex items-center justify-between px-4 py-2.5 ${t.bar} ${t.text}`;
+  const hTitle = document.createElement('span');
+  hTitle.className = 'font-semibold text-sm tracking-wide flex-1';
+  hTitle.textContent = 'Weather';
+  hdr.appendChild(hTitle);
+  if (state.editMode) {
+    hdr.appendChild(mkBtn('\u2699', 'Weather settings', 'opacity-70 hover:opacity-100 text-base px-1 transition-opacity', () => openWeatherModal()));
+    const handle = mkHandle('text-white/60 hover:text-white/90 text-base');
+    handle.draggable = true;
+    handle.addEventListener('dragstart', e => {
+      e.stopPropagation();
+      dnd = { type: 'widget', id: 'weather' };
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', 'weather');
+      setTimeout(() => { card.style.opacity = '0.4'; }, 0);
+    });
+    handle.addEventListener('dragend', () => {
+      card.style.opacity = '';
+      clearWidgetIndicators();
+      dnd = { type: null };
+    });
+    hdr.insertBefore(handle, hTitle);
+  }
+  card.appendChild(hdr);
+
+  const body = document.createElement('div');
+  body.id = 'weatherCardBody';
+  body.className = 'px-4 py-4 text-center';
   card.appendChild(body);
   return card;
 }
@@ -1348,32 +1482,91 @@ function renderClockCard() {
 // ─── Weather ──────────────────────────────────────────────────────────────────
 
 async function fetchWeather() {
-  const el = document.getElementById('clockCardWeather');
+  const el = document.getElementById('weatherCardBody');
   if (el) { el.innerHTML = ''; el.appendChild(mkCardSpinner()); }
   try {
     const res = await fetch('/api/weather');
-    if (res.status === 204) { renderWeatherCard(null); return; }
+    if (res.status === 204) { renderWeatherBody(null); return; }
     if (!res.ok) throw new Error(res.status);
-    renderWeatherCard(await res.json());
-  } catch { renderWeatherCard(null); }
+    renderWeatherBody(await res.json());
+  } catch { renderWeatherBody(null); }
 }
 
-function renderWeatherCard(data) {
-  const el = document.getElementById('clockCardWeather');
+// OpenWeather condition code -> Bootstrap Icons symbol + a matching gradient.
+// Using the sprite instead of openweathermap.org/img keeps the card working with
+// no external requests, and keeps the icon style consistent with the rest of the UI.
+// OpenWeather condition code -> Bootstrap Icons symbol, a soft background tint and
+// an icon colour. Deliberately low-saturation: the card sits among neutral stone
+// cards, so a vivid block drew the eye away from the links. Colour now carries the
+// condition through the icon, with the background only hinting at it.
+const WX_LOOK = {
+  '01d': { icon:'sun-fill',                  tint:'from-amber-50 to-orange-50 dark:from-stone-800 dark:to-stone-900',  ink:'text-amber-500'  },
+  '01n': { icon:'moon-stars-fill',           tint:'from-indigo-50 to-slate-50 dark:from-stone-800 dark:to-stone-900',  ink:'text-indigo-400' },
+  '02d': { icon:'cloud-sun-fill',            tint:'from-sky-50 to-slate-50 dark:from-stone-800 dark:to-stone-900',     ink:'text-sky-500'    },
+  '02n': { icon:'cloud-moon-fill',           tint:'from-slate-50 to-stone-50 dark:from-stone-800 dark:to-stone-900',   ink:'text-slate-400'  },
+  '03d': { icon:'cloud-fill',                tint:'from-sky-50 to-slate-50 dark:from-stone-800 dark:to-stone-900',     ink:'text-sky-400'    },
+  '03n': { icon:'cloud-fill',                tint:'from-slate-50 to-stone-50 dark:from-stone-800 dark:to-stone-900',   ink:'text-slate-400'  },
+  '04d': { icon:'clouds-fill',               tint:'from-slate-50 to-stone-50 dark:from-stone-800 dark:to-stone-900',   ink:'text-slate-500'  },
+  '04n': { icon:'clouds-fill',               tint:'from-slate-50 to-stone-50 dark:from-stone-800 dark:to-stone-900',   ink:'text-slate-400'  },
+  '09d': { icon:'cloud-drizzle-fill',        tint:'from-sky-50 to-slate-50 dark:from-stone-800 dark:to-stone-900',     ink:'text-sky-600'    },
+  '09n': { icon:'cloud-drizzle-fill',        tint:'from-slate-50 to-stone-50 dark:from-stone-800 dark:to-stone-900',   ink:'text-sky-500'    },
+  '10d': { icon:'cloud-rain-fill',           tint:'from-sky-50 to-indigo-50 dark:from-stone-800 dark:to-stone-900',    ink:'text-sky-600'    },
+  '10n': { icon:'cloud-rain-fill',           tint:'from-indigo-50 to-slate-50 dark:from-stone-800 dark:to-stone-900',  ink:'text-indigo-400' },
+  '11d': { icon:'cloud-lightning-rain-fill', tint:'from-violet-50 to-slate-50 dark:from-stone-800 dark:to-stone-900',  ink:'text-violet-500' },
+  '11n': { icon:'cloud-lightning-rain-fill', tint:'from-violet-50 to-slate-50 dark:from-stone-800 dark:to-stone-900',  ink:'text-violet-400' },
+  '13d': { icon:'cloud-snow-fill',           tint:'from-cyan-50 to-sky-50 dark:from-stone-800 dark:to-stone-900',      ink:'text-cyan-500'   },
+  '13n': { icon:'cloud-snow-fill',           tint:'from-slate-50 to-stone-50 dark:from-stone-800 dark:to-stone-900',   ink:'text-cyan-400'   },
+  '50d': { icon:'cloud-fog2-fill',           tint:'from-stone-50 to-stone-100 dark:from-stone-800 dark:to-stone-900',  ink:'text-stone-500'  },
+  '50n': { icon:'cloud-fog2-fill',           tint:'from-stone-50 to-stone-100 dark:from-stone-800 dark:to-stone-900',  ink:'text-stone-400'  },
+};
+
+function wxTime(ts) {
+  if (!ts) return null;
+  return new Date(ts * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function renderWeatherBody(data) {
+  const el = document.getElementById('weatherCardBody');
   if (!el) return;
   if (!data) { el.innerHTML = ''; return; }
-  const unit = data.units === 'imperial' ? '°F' : '°C';
+
+  const unit = data.units === 'imperial' ? '\u00b0F' : '\u00b0C';
+  const spd  = data.units === 'imperial' ? 'mph' : 'm/s';
+  const look = WX_LOOK[data.icon] || WX_LOOK['03d'];
+  const bi   = n => `<svg class="w-3.5 h-3.5 flex-shrink-0 opacity-60" fill="currentColor" aria-hidden="true"><use href="/bootstrap-icons.svg#${n}"/></svg>`;
+
+  // Chips render only for fields that are present, so a sparse response degrades
+  // to fewer chips rather than empty ones.
+  const chips = [];
+  if (data.feels    != null) chips.push([ 'thermometer-half', `feels ${data.feels}${unit}` ]);
+  if (data.humidity != null) chips.push([ 'droplet-half',     `${data.humidity}%` ]);
+  if (data.wind)             chips.push([ 'wind',             `${data.wind} ${spd}` ]);
+  const sr = wxTime(data.sunrise), ss = wxTime(data.sunset);
+  if (sr) chips.push([ 'sunrise', sr ]);
+  if (ss) chips.push([ 'sunset',  ss ]);
+
+  const range = (data.tempMin != null && data.tempMax != null && data.tempMin !== data.tempMax)
+    ? `<span class="text-xs ${FIXED.sub}">${data.tempMin}\u00b0 / ${data.tempMax}\u00b0</span>` : '';
+
   el.innerHTML = `
-    <div class="flex items-center justify-center gap-2 sm:mt-2">
-      <img src="https://openweathermap.org/img/wn/${data.icon}@2x.png"
-           class="w-8 h-8 sm:w-10 sm:h-10 flex-shrink-0" alt="" onerror="this.remove()">
-      <div>
-        <div class="text-xl sm:text-2xl font-semibold ${FIXED.text}">${data.temp}${unit}</div>
-        <div class="text-xs capitalize ${FIXED.sub}">${data.description}</div>
+    <div class="-mx-4 -my-4 px-5 py-4 bg-gradient-to-br ${look.tint}">
+      <div class="flex items-center justify-between gap-3">
+        <div class="min-w-0">
+          <div class="flex items-baseline gap-1">
+            <span class="text-4xl font-light leading-none tracking-tight ${FIXED.text}">${data.temp}</span>
+            <span class="text-lg font-light ${FIXED.sub}">${unit}</span>
+          </div>
+          <div class="mt-1 text-sm capitalize ${FIXED.sub} truncate">${data.description}</div>
+          <div class="mt-0.5 flex items-center gap-2">
+            <span class="text-xs ${FIXED.sub} truncate">${data.city}</span>${range}
+          </div>
+        </div>
+        <svg class="w-12 h-12 flex-shrink-0 ${look.ink}" fill="currentColor" aria-hidden="true">
+          <use href="/bootstrap-icons.svg#${look.icon}"/></svg>
       </div>
-    </div>
-    <div class="hidden sm:block text-xs mt-1 ${FIXED.sub}">
-      ${data.city} &middot; feels ${data.feels}${unit} &middot; ${data.humidity}% humidity
+      ${chips.length ? `<div class="mt-3 pt-2.5 border-t border-stone-200/70 dark:border-stone-700/50 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs ${FIXED.sub}">
+        ${chips.map(([i,t]) => `<span class="flex items-center gap-1.5">${bi(i)}${t}</span>`).join('')}
+      </div>` : ''}
     </div>`;
 }
 
@@ -1395,6 +1588,15 @@ function openWeatherModal() {
   apiInput.placeholder = 'Paste your API key…';
   apiInput.className = `w-full px-3 py-2 rounded-lg text-sm border ${b.card} ${b.text} focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all`;
   wrap.appendChild(apiInput);
+
+  // Accent for the weather card; '' inherits the global base palette.
+  let selectedWxAccent = cfg.weatherAccent || '';
+  const wxAccLabel = mkLabel('Accent colour', b.sub);
+  wxAccLabel.className += ' mt-4 block';
+  wrap.appendChild(wxAccLabel);
+  wrap.appendChild(mkSwatchPicker(selectedWxAccent, ['', ...PALETTES],
+    c => c ? ACCENT[c].swatch : 'bg-stone-300 dark:bg-stone-600 ring-1 ring-stone-400',
+    c => { selectedWxAccent = c; }));
 
   const hint = document.createElement('p');
   hint.className = `text-xs mt-1 mb-3 ${b.sub}`;
@@ -1449,6 +1651,7 @@ function openWeatherModal() {
   saveBtn.onclick = async () => {
     await api('PUT', '/api/config', {
       weather: { apiKey: apiInput.value.trim(), city: cityInput.value.trim(), units: selectedUnits },
+      weatherAccent: selectedWxAccent,
     });
     state.config = await api('GET', '/api/config');
     closeModal();
@@ -2299,6 +2502,15 @@ function openSettingsModal() {
   genPanel.appendChild(bpHint);
   genPanel.appendChild(mkSwatchPicker(selectedBase, PALETTES, c => ACCENT[c].swatch, c => { selectedBase = c; }));
 
+  // Clock card accent — the clock has no edit modal of its own, so it lives here.
+  let selectedClockAccent = cfg.clockAccent || '';
+  const clkAccLabel = mkLabel('Clock card accent', b.sub);
+  clkAccLabel.className += ' mt-4 block';
+  genPanel.appendChild(clkAccLabel);
+  genPanel.appendChild(mkSwatchPicker(selectedClockAccent, ['', ...PALETTES],
+    c => c ? ACCENT[c].swatch : 'bg-stone-300 dark:bg-stone-600 ring-1 ring-stone-400',
+    c => { selectedClockAccent = c; }));
+
   const piLabel = mkLabel('Ping interval', b.sub);
   piLabel.className += ' mt-4 block';
   genPanel.appendChild(piLabel);
@@ -2499,6 +2711,7 @@ function openSettingsModal() {
     await api('PUT', '/api/config', {
       title: titleInput.value.trim() || 'My Dashboard',
       basePalette: selectedBase,
+      clockAccent: selectedClockAccent,
       pingInterval: selectedPingInterval,
       background: { type: bgType, value: bgValue },
       sharpCorners: sharpToggle.checked,
@@ -2740,12 +2953,12 @@ function openAddWidgetModal() {
   title.textContent = 'Add widget';
   wrap.appendChild(title);
 
-  const svgFolder    = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v8.25A2.25 2.25 0 0 0 4.5 16.5h15a2.25 2.25 0 0 0 2.25-2.25V9A2.25 2.25 0 0 0 19.5 6.75h-5.379a1.5 1.5 0 0 1-1.06-.44Z"/></svg>`;
-  const svgDoc       = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"/></svg>`;
-  const svgRss       = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M12.75 19.5v-.75a7.5 7.5 0 0 0-7.5-7.5H4.5m0-6.75h.75c7.87 0 14.25 6.38 14.25 14.25v.75M6 18.75a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z"/></svg>`;
-  const svgCode      = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3-4.5 16.5"/></svg>`;
-  const svgClock     = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>`;
-  const svgCalendar  = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5"/></svg>`;
+  const svgFolder    = `<svg class="w-6 h-6" fill="currentColor" aria-hidden="true"><use href="/bootstrap-icons.svg#folder"/></svg>`;
+  const svgDoc       = `<svg class="w-6 h-6" fill="currentColor" aria-hidden="true"><use href="/bootstrap-icons.svg#file-earmark-text"/></svg>`;
+  const svgRss       = `<svg class="w-6 h-6" fill="currentColor" aria-hidden="true"><use href="/bootstrap-icons.svg#rss"/></svg>`;
+  const svgCode      = `<svg class="w-6 h-6" fill="currentColor" aria-hidden="true"><use href="/bootstrap-icons.svg#code-slash"/></svg>`;
+  const svgClock     = `<svg class="w-6 h-6" fill="currentColor" aria-hidden="true"><use href="/bootstrap-icons.svg#clock"/></svg>`;
+  const svgCalendar  = `<svg class="w-6 h-6" fill="currentColor" aria-hidden="true"><use href="/bootstrap-icons.svg#calendar3"/></svg>`;
 
   const choices = [
     { icon: svgFolder,   label: 'Group',     desc: 'A group of links',      fn: openGroupModal     },
@@ -2827,7 +3040,7 @@ function renderMd(text) {
 
 function renderNoteCard(note) {
   const cfg = state.config;
-  const t   = TOPBAR[cfg.basePalette] || TOPBAR.stone;
+  const t = widgetBar(note.accent, cfg);
   const b   = FIXED;
   const card = document.createElement('div');
   card.className = `group-section rounded-xl overflow-hidden border shadow-md ${b.card}`;
@@ -2906,7 +3119,7 @@ function renderNoteCard(note) {
 
 function renderFeedCard(feed) {
   const cfg = state.config;
-  const t   = TOPBAR[cfg.basePalette] || TOPBAR.stone;
+  const t = widgetBar(feed.accent, cfg);
   const b   = FIXED;
   const card = document.createElement('div');
   card.className = `group-section rounded-xl overflow-hidden border shadow-md ${b.card}`;
@@ -2962,7 +3175,7 @@ function renderFeedCard(feed) {
 
 function renderIframeCard(iframe) {
   const cfg = state.config;
-  const t   = TOPBAR[cfg.basePalette] || TOPBAR.stone;
+  const t = widgetBar(iframe.accent, cfg);
   const b   = FIXED;
   const card = document.createElement('div');
   card.className = `group-section rounded-xl overflow-hidden border shadow-md ${b.card}`;
@@ -3088,6 +3301,15 @@ function openNoteModal(note) {
   const titleInput = mkInput(note ? note.title : '', 'e.g. Ideas, TODO', b);
   wrap.appendChild(titleInput);
 
+  // Per-widget accent; '' means inherit the global base palette.
+  let selectedAccent = (note && note.accent) || '';
+  const accLabel = mkLabel('Accent colour', b.sub);
+  accLabel.className += ' mt-4 block';
+  wrap.appendChild(accLabel);
+  wrap.appendChild(mkSwatchPicker(selectedAccent, ['', ...PALETTES],
+    c => c ? ACCENT[c].swatch : 'bg-stone-300 dark:bg-stone-600 ring-1 ring-stone-400',
+    c => { selectedAccent = c; }));
+
   const contentLabel = mkLabel('Content', b.sub);
   contentLabel.className += ' mt-3 block';
   wrap.appendChild(contentLabel);
@@ -3122,9 +3344,9 @@ function openNoteModal(note) {
     const t = titleInput.value.trim() || 'Notes';
     const c = contentArea.value.trim();
     if (note) {
-      await api('PUT', `/api/notes/${note.id}`, { title: t, content: c });
+      await api('PUT', `/api/notes/${note.id}`, { title: t, content: c, accent: selectedAccent });
     } else {
-      await api('POST', '/api/notes', { title: t, content: c });
+      await api('POST', '/api/notes', { title: t, content: c, accent: selectedAccent });
     }
     closeModal();
     await reload();
@@ -3150,6 +3372,15 @@ function openFeedModal(feed) {
   wrap.appendChild(mkLabel('Title', b.sub));
   const titleInput = mkInput(feed ? feed.title : '', 'e.g. Tech News', b);
   wrap.appendChild(titleInput);
+
+  // Per-widget accent; '' means inherit the global base palette.
+  let selectedAccent = (feed && feed.accent) || '';
+  const accLabel = mkLabel('Accent colour', b.sub);
+  accLabel.className += ' mt-4 block';
+  wrap.appendChild(accLabel);
+  wrap.appendChild(mkSwatchPicker(selectedAccent, ['', ...PALETTES],
+    c => c ? ACCENT[c].swatch : 'bg-stone-300 dark:bg-stone-600 ring-1 ring-stone-400',
+    c => { selectedAccent = c; }));
 
   const urlLabel = mkLabel('Feed URL', b.sub);
   urlLabel.className += ' mt-3 block';
@@ -3202,9 +3433,9 @@ function openFeedModal(feed) {
     const u = urlInput.value.trim();
     if (!u) { urlInput.focus(); return; }
     if (feed) {
-      await api('PUT', `/api/feeds/${feed.id}`, { title: t, url: u, maxItems: selectedMax });
+      await api('PUT', `/api/feeds/${feed.id}`, { title: t, url: u, maxItems: selectedMax, accent: selectedAccent });
     } else {
-      await api('POST', '/api/feeds', { title: t, url: u, maxItems: selectedMax });
+      await api('POST', '/api/feeds', { title: t, url: u, maxItems: selectedMax, accent: selectedAccent });
     }
     closeModal();
     await reload();
@@ -3230,6 +3461,15 @@ function openIframeModal(iframe) {
   wrap.appendChild(mkLabel('Title', b.sub));
   const titleInput = mkInput(iframe ? iframe.title : '', 'e.g. Grafana', b);
   wrap.appendChild(titleInput);
+
+  // Per-widget accent; '' means inherit the global base palette.
+  let selectedAccent = (iframe && iframe.accent) || '';
+  const accLabel = mkLabel('Accent colour', b.sub);
+  accLabel.className += ' mt-4 block';
+  wrap.appendChild(accLabel);
+  wrap.appendChild(mkSwatchPicker(selectedAccent, ['', ...PALETTES],
+    c => c ? ACCENT[c].swatch : 'bg-stone-300 dark:bg-stone-600 ring-1 ring-stone-400',
+    c => { selectedAccent = c; }));
 
   const urlLabel = mkLabel('URL', b.sub);
   urlLabel.className += ' mt-3 block';
@@ -3282,9 +3522,9 @@ function openIframeModal(iframe) {
     const u = urlInput.value.trim();
     if (!u) { urlInput.focus(); return; }
     if (iframe) {
-      await api('PUT', `/api/iframes/${iframe.id}`, { title: t, url: u, height: selectedHeight });
+      await api('PUT', `/api/iframes/${iframe.id}`, { title: t, url: u, height: selectedHeight, accent: selectedAccent });
     } else {
-      await api('POST', '/api/iframes', { title: t, url: u, height: selectedHeight });
+      await api('POST', '/api/iframes', { title: t, url: u, height: selectedHeight, accent: selectedAccent });
     }
     closeModal();
     await reload();
@@ -3300,7 +3540,7 @@ function openIframeModal(iframe) {
 
 function renderCountdownCard(cd) {
   const cfg = state.config;
-  const t   = TOPBAR[cfg.basePalette] || TOPBAR.stone;
+  const t = widgetBar(cd.accent, cfg);
   const b   = FIXED;
   const card = document.createElement('div');
   card.className = `group-section rounded-xl overflow-hidden border shadow-md ${b.card}`;
@@ -3368,6 +3608,15 @@ function openCountdownModal(cd) {
   const titleInput = mkInput(cd?.title || '', 'e.g. SSL cert renewal', b);
   wrap.appendChild(titleInput);
 
+  // Per-widget accent; '' means inherit the global base palette.
+  let selectedAccent = (cd && cd.accent) || '';
+  const accLabel = mkLabel('Accent colour', b.sub);
+  accLabel.className += ' mt-4 block';
+  wrap.appendChild(accLabel);
+  wrap.appendChild(mkSwatchPicker(selectedAccent, ['', ...PALETTES],
+    c => c ? ACCENT[c].swatch : 'bg-stone-300 dark:bg-stone-600 ring-1 ring-stone-400',
+    c => { selectedAccent = c; }));
+
   const dateLabel = mkLabel('Target date', b.sub);
   dateLabel.className += ' mt-3 block';
   wrap.appendChild(dateLabel);
@@ -3398,8 +3647,8 @@ function openCountdownModal(cd) {
     const t = titleInput.value.trim() || 'Countdown';
     const d = dateInput.value;
     if (!d) { dateInput.focus(); return; }
-    if (cd) { await api('PUT', `/api/countdowns/${cd.id}`, { title: t, targetDate: d, description: descInput.value.trim() }); }
-    else    { await api('POST', '/api/countdowns', { title: t, targetDate: d, description: descInput.value.trim() }); }
+    if (cd) { await api('PUT', `/api/countdowns/${cd.id}`, { title: t, targetDate: d, description: descInput.value.trim(), accent: selectedAccent }); }
+    else    { await api('POST', '/api/countdowns', { title: t, targetDate: d, description: descInput.value.trim(), accent: selectedAccent }); }
     closeModal(); await reload();
   };
   footer.appendChild(saveBtn);
@@ -3446,7 +3695,7 @@ function renderIcalEvents(body, events, maxItems) {
 
 function renderCalendarCard(cal) {
   const cfg = state.config;
-  const t   = TOPBAR[cfg.basePalette] || TOPBAR.stone;
+  const t = widgetBar(cal.accent, cfg);
   const b   = FIXED;
   const card = document.createElement('div');
   card.className = `group-section rounded-xl overflow-hidden border shadow-md ${b.card}`;
@@ -3494,6 +3743,15 @@ function openCalendarModal(cal) {
   const titleInput = mkInput(cal?.title || '', 'e.g. Family Calendar', b);
   wrap.appendChild(titleInput);
 
+  // Per-widget accent; '' means inherit the global base palette.
+  let selectedAccent = (cal && cal.accent) || '';
+  const accLabel = mkLabel('Accent colour', b.sub);
+  accLabel.className += ' mt-4 block';
+  wrap.appendChild(accLabel);
+  wrap.appendChild(mkSwatchPicker(selectedAccent, ['', ...PALETTES],
+    c => c ? ACCENT[c].swatch : 'bg-stone-300 dark:bg-stone-600 ring-1 ring-stone-400',
+    c => { selectedAccent = c; }));
+
   const urlLabel = mkLabel('iCal URL (.ics)', b.sub);
   urlLabel.className += ' mt-3 block';
   wrap.appendChild(urlLabel);
@@ -3529,8 +3787,8 @@ function openCalendarModal(cal) {
     const t = titleInput.value.trim() || 'Calendar';
     const u = urlInput.value.trim();
     if (!u) { urlInput.focus(); return; }
-    if (cal) { await api('PUT', `/api/calendars/${cal.id}`, { title: t, url: u, maxItems: selectedMax }); }
-    else     { await api('POST', '/api/calendars', { title: t, url: u, maxItems: selectedMax }); }
+    if (cal) { await api('PUT', `/api/calendars/${cal.id}`, { title: t, url: u, maxItems: selectedMax, accent: selectedAccent }); }
+    else     { await api('POST', '/api/calendars', { title: t, url: u, maxItems: selectedMax, accent: selectedAccent }); }
     closeModal(); await reload();
   };
   footer.appendChild(saveBtn);
@@ -3694,6 +3952,15 @@ document.getElementById('menuClockToggle').addEventListener('click', async () =>
   render();
 });
 
+document.getElementById('menuWeatherToggle').addEventListener('click', async () => {
+  closeMenu();
+  const next = !state.config.showWeather;
+  await api('PUT', '/api/config', { showWeather: next });
+  state.config.showWeather = next;
+  render();
+  if (next) fetchWeather();
+});
+
 async function toggleNoteVisibility(noteId) {
   closeMenu();
   const hidden = new Set(state.config.hiddenNotes || []);
@@ -3739,6 +4006,7 @@ function updateClock() {
 }
 setInterval(updateClock, 30_000);
 
+initSidebar();
 reload();
 
 // Re-render when crossing the small-screen breakpoint (< 640px)
