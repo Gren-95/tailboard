@@ -20,6 +20,15 @@ const FAVICON_MIME = '/data/favicon.mime';
 const AUTH_USER = (process.env.AUTH_USER || '').trim();
 const AUTH_PASS = (process.env.AUTH_PASS || '').trim();
 
+// ─── Split links (optional) ───────────────────────────────────────────────────
+// When SPLIT_LINKS is on, each link may carry a second `mobileUrl` used instead of
+// `url` on small screens — e.g. an http:// address on the LAN desktop and an
+// https:// one on a phone that roams off-network.
+//
+// The flag only controls whether mobileUrl is *offered and used*; it is always
+// persisted, so turning the flag off and back on does not lose what was entered.
+const SPLIT_LINKS = /^(1|true|yes|on)$/i.test((process.env.SPLIT_LINKS || '').trim());
+
 function safeEq(a, b) {
   const ab = Buffer.from(a), bb = Buffer.from(b);
   return ab.length === bb.length && timingSafeEqual(ab, bb);
@@ -271,6 +280,12 @@ app.get('/api/auth', (req, res) => {
   res.json({ enabled: !!(AUTH_USER && AUTH_PASS) });
 });
 
+// Env-derived feature flags. Kept out of /api/config because that is user-editable
+// and persisted to disk; these come from the environment on every start.
+app.get('/api/features', (req, res) => {
+  res.json({ splitLinks: SPLIT_LINKS });
+});
+
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 app.get('/api/config', (req, res) => {
@@ -476,6 +491,8 @@ app.post('/api/groups/:id/links', (req, res) => {
     id: randomUUID(),
     name: String(name).trim().slice(0, 80),
     url: String(url).trim().slice(0, 2000),
+    // Optional; used instead of `url` on small screens when SPLIT_LINKS is on.
+    mobileUrl: String(req.body.mobileUrl || '').trim().slice(0, 2000),
     icon: String(icon || '').trim().slice(0, 80).replace(/[^a-z0-9-]/g, ''),
     iconBg: String(req.body.iconBg || 'none').trim().slice(0, 30),
     customIcon: String(req.body.customIcon || '').trim().slice(0, 2097152),
@@ -514,6 +531,7 @@ app.put('/api/groups/:gid/links/:lid', (req, res) => {
   const { name, url, icon, description } = req.body;
   if (name        !== undefined) link.name        = String(name).trim().slice(0, 80);
   if (url         !== undefined) link.url         = String(url).trim().slice(0, 2000);
+  if (req.body.mobileUrl !== undefined) link.mobileUrl = String(req.body.mobileUrl).trim().slice(0, 2000);
   if (icon        !== undefined) link.icon        = String(icon).trim().slice(0, 80).replace(/[^a-z0-9-]/g, '');
   if (req.body.iconBg     !== undefined) link.iconBg     = String(req.body.iconBg).trim().slice(0, 30);
   if (req.body.customIcon !== undefined) link.customIcon = String(req.body.customIcon).trim().slice(0, 2097152);
