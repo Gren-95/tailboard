@@ -9,6 +9,11 @@ COPY tailwind.config.js .
 COPY src/input.css src/input.css
 COPY src/public/index.html src/public/index.html
 
+# Vendor the Bootstrap Icons sprite (MIT) so the UI works with no external
+# requests — this dashboard is expected to run on isolated networks.
+RUN cp node_modules/bootstrap-icons/bootstrap-icons.svg src/public/bootstrap-icons.svg \
+ && cp node_modules/bootstrap-icons/LICENSE src/public/bootstrap-icons.LICENSE
+
 RUN npx tailwindcss -i src/input.css -o src/public/style.css --minify
 
 # Stage 2: lean runtime image

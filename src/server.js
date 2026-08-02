@@ -158,6 +158,9 @@ const DEFAULT_CONFIG = {
   pingInterval: 60,
   viewMode: 'grid',
   showClock: false,
+  showWeather: false,
+  clockAccent: '',
+  weatherAccent: '',
   sharpCorners: false,
   customCss: '',
   weather: { apiKey: '', city: '', units: 'metric' },
@@ -178,7 +181,12 @@ function loadConfig() {
   try {
     if (fs.existsSync(DATA_FILE)) {
       // Merge with DEFAULT_CONFIG so new fields are always present
-      return { ...DEFAULT_CONFIG, ...JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')) };
+      const raw = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+      const cfg = { ...DEFAULT_CONFIG, ...raw };
+      if (raw.showWeather === undefined) {
+        cfg.showWeather = Boolean(raw.showClock && (raw.weather || {}).apiKey);
+      }
+      return cfg;
     }
   } catch {
     // fall through to default
@@ -294,13 +302,16 @@ app.get('/api/config', (req, res) => {
 
 app.put('/api/config', (req, res) => {
   const cfg = loadConfig();
-  const { title, basePalette, darkMode, pingInterval, viewMode, showClock, sharpCorners, customCss, weather, background, widgetOrder, colSpan, hiddenNotes } = req.body;
+  const { title, basePalette, darkMode, pingInterval, viewMode, showClock, showWeather, clockAccent, weatherAccent, sharpCorners, customCss, weather, background, widgetOrder, colSpan, hiddenNotes } = req.body;
   if (title        !== undefined) cfg.title        = String(title).trim().slice(0, 100);
   if (basePalette  !== undefined) cfg.basePalette  = String(basePalette);
   if (darkMode     !== undefined) cfg.darkMode     = Boolean(darkMode);
   if (pingInterval !== undefined) cfg.pingInterval = Math.max(0, Number(pingInterval) || 0);
   if (viewMode     !== undefined) cfg.viewMode     = ['grid', 'list'].includes(viewMode) ? viewMode : 'grid';
   if (showClock    !== undefined) cfg.showClock    = Boolean(showClock);
+  if (showWeather  !== undefined) cfg.showWeather  = Boolean(showWeather);
+  if (clockAccent   !== undefined) cfg.clockAccent   = String(clockAccent).trim().slice(0, 20);
+  if (weatherAccent !== undefined) cfg.weatherAccent = String(weatherAccent).trim().slice(0, 20);
   if (sharpCorners !== undefined) cfg.sharpCorners = Boolean(sharpCorners);
   if (customCss    !== undefined) cfg.customCss    = String(customCss).slice(0, 50000);
   if (weather !== undefined && weather !== null && typeof weather === 'object') {
@@ -345,6 +356,7 @@ app.post('/api/config/import', (req, res) => {
     pingInterval: typeof body.pingInterval === 'number'  ? body.pingInterval : current.pingInterval,
     viewMode:     typeof body.viewMode     === 'string'  ? body.viewMode     : current.viewMode,
     showClock:    typeof body.showClock    === 'boolean' ? body.showClock    : current.showClock,
+    showWeather:  typeof body.showWeather  === 'boolean' ? body.showWeather  : current.showWeather,
     weather: (body.weather && typeof body.weather === 'object') ? {
       apiKey: String(body.weather.apiKey || '').trim().slice(0, 300),
       city:   String(body.weather.city   || '').trim().slice(0, 100),
@@ -611,7 +623,15 @@ app.get('/api/weather', async (req, res) => {
     weatherCache = {
       temp:        Math.round(d.main.temp),
       feels:       Math.round(d.main.feels_like),
+      tempMin:     Math.round(d.main.temp_min),
+      tempMax:     Math.round(d.main.temp_max),
       humidity:    d.main.humidity,
+      pressure:    d.main.pressure,
+      // m/s for metric, mph for imperial — OpenWeather switches with the units param
+      wind:        Math.round((d.wind?.speed ?? 0) * 10) / 10,
+      clouds:      d.clouds?.all ?? null,
+      sunrise:     d.sys?.sunrise ?? null,
+      sunset:      d.sys?.sunset ?? null,
       description: d.weather[0].description,
       icon:        d.weather[0].icon,
       city:        d.name,
@@ -734,6 +754,7 @@ app.post('/api/countdowns', (req, res) => {
     title:       String(req.body.title       || 'Countdown').trim().slice(0, 80),
     targetDate:  String(req.body.targetDate  || '').trim().slice(0, 30),
     description: String(req.body.description || '').trim().slice(0, 200),
+    accent:      String(req.body.accent      || '').trim().slice(0, 20),
   };
   cfg.countdowns = cfg.countdowns || [];
   cfg.countdowns.push(cd);
@@ -750,6 +771,7 @@ app.put('/api/countdowns/:id', (req, res) => {
   if (req.body.title       !== undefined) cd.title       = String(req.body.title).trim().slice(0, 80);
   if (req.body.targetDate  !== undefined) cd.targetDate  = String(req.body.targetDate).trim().slice(0, 30);
   if (req.body.description !== undefined) cd.description = String(req.body.description).trim().slice(0, 200);
+  if (req.body.accent !== undefined) cd.accent = String(req.body.accent).trim().slice(0, 20);
   saveConfig(cfg);
   res.json(cd);
 });
@@ -776,6 +798,7 @@ app.post('/api/calendars', (req, res) => {
     title:    String(req.body.title || 'Calendar').trim().slice(0, 80),
     url:      String(req.body.url   || '').trim().slice(0, 2000),
     maxItems: Math.min(20, Math.max(1, Number(req.body.maxItems) || 10)),
+    accent:   String(req.body.accent || '').trim().slice(0, 20),
   };
   cfg.calendars = cfg.calendars || [];
   cfg.calendars.push(cal);
@@ -792,6 +815,7 @@ app.put('/api/calendars/:id', (req, res) => {
   if (req.body.title    !== undefined) cal.title    = String(req.body.title).trim().slice(0, 80);
   if (req.body.url      !== undefined) { icalCache.delete(cal.url); cal.url = String(req.body.url).trim().slice(0, 2000); }
   if (req.body.maxItems !== undefined) cal.maxItems = Math.min(20, Math.max(1, Number(req.body.maxItems) || 10));
+  if (req.body.accent !== undefined) cal.accent = String(req.body.accent).trim().slice(0, 20);
   saveConfig(cfg);
   res.json(cal);
 });
@@ -815,6 +839,7 @@ app.post('/api/notes', (req, res) => {
   const cfg = loadConfig();
   const note = {
     id: randomUUID(),
+    accent: String(req.body.accent || '').trim().slice(0, 20),
     title: String(req.body.title || 'Notes').trim().slice(0, 80),
     content: String(req.body.content || '').trim().slice(0, 10000),
   };
@@ -832,6 +857,7 @@ app.put('/api/notes/:id', (req, res) => {
   if (!note) return res.status(404).json({ error: 'note not found' });
   if (req.body.title   !== undefined) note.title   = String(req.body.title).trim().slice(0, 80);
   if (req.body.content !== undefined) note.content = String(req.body.content).trim().slice(0, 10000);
+  if (req.body.accent !== undefined) note.accent = String(req.body.accent).trim().slice(0, 20);
   saveConfig(cfg);
   res.json(note);
 });
@@ -854,6 +880,7 @@ app.post('/api/feeds', (req, res) => {
   const cfg = loadConfig();
   const feed = {
     id: randomUUID(),
+    accent: String(req.body.accent || '').trim().slice(0, 20),
     title: String(req.body.title || 'Feed').trim().slice(0, 80),
     url: String(req.body.url || '').trim().slice(0, 2000),
     maxItems: Math.min(20, Math.max(1, Number(req.body.maxItems) || 5)),
@@ -877,6 +904,7 @@ app.put('/api/feeds/:id', (req, res) => {
     feed.url = String(req.body.url).trim().slice(0, 2000);
   }
   if (req.body.maxItems !== undefined) feed.maxItems = Math.min(20, Math.max(1, Number(req.body.maxItems) || 5));
+  if (req.body.accent !== undefined) feed.accent = String(req.body.accent).trim().slice(0, 20);
   saveConfig(cfg);
   res.json(feed);
 });
@@ -900,6 +928,7 @@ app.post('/api/iframes', (req, res) => {
   const cfg = loadConfig();
   const iframe = {
     id: randomUUID(),
+    accent: String(req.body.accent || '').trim().slice(0, 20),
     title: String(req.body.title || 'Embed').trim().slice(0, 80),
     url: String(req.body.url || '').trim().slice(0, 2000),
     height: Math.min(2000, Math.max(100, Number(req.body.height) || 300)),
@@ -920,6 +949,7 @@ app.put('/api/iframes/:id', (req, res) => {
   if (req.body.title  !== undefined) iframe.title  = String(req.body.title).trim().slice(0, 80);
   if (req.body.url    !== undefined) iframe.url    = String(req.body.url).trim().slice(0, 2000);
   if (req.body.height !== undefined) iframe.height = Math.min(2000, Math.max(100, Number(req.body.height) || 300));
+  if (req.body.accent !== undefined) iframe.accent = String(req.body.accent).trim().slice(0, 20);
   saveConfig(cfg);
   res.json(iframe);
 });

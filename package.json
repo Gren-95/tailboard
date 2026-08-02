@@ -1,6 +1,6 @@
 {
   "name": "tailboard",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Self-hosted Docker link dashboard with Tailwind palettes",
   "main": "src/server.js",
   "scripts": {
@@ -11,6 +11,7 @@
     "express": "^4.19.2"
   },
   "devDependencies": {
+    "bootstrap-icons": "^1.13.1",
     "tailwindcss": "^3.4.0"
   }
 }
