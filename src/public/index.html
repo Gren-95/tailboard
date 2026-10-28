@@ -38,6 +38,9 @@
     .sharp, .sharp * { border-radius: 0 !important; }
     /* Link row focus ring for keyboard nav */
     .link-row:focus { outline: 2px solid #6366f1; outline-offset: -2px; }
+    /* Docked sidebar: push page content instead of overlaying it */
+    body { transition: padding-left .2s ease-out; }
+    #mobileSidebar.sidebar-docked { width: 20rem; max-width: 20rem; }
   </style>
 </head>
 <body class="bg-white dark:bg-stone-950">
@@ -50,28 +53,28 @@
 <script>
 // TOPBAR[palette] — solid coloured top bar; page/cards are always stone (see FIXED)
 const TOPBAR = {
-  stone:   { bar:'bg-stone-600 dark:bg-stone-800 border-stone-700 dark:border-stone-900',         text:'text-white'                 },
-  gray:    { bar:'bg-gray-600 dark:bg-gray-800 border-gray-700 dark:border-gray-900',             text:'text-white'                 },
-  zinc:    { bar:'bg-zinc-600 dark:bg-zinc-800 border-zinc-700 dark:border-zinc-900',             text:'text-white'                 },
-  slate:   { bar:'bg-slate-600 dark:bg-slate-800 border-slate-700 dark:border-slate-900',         text:'text-white'                 },
-  neutral: { bar:'bg-neutral-600 dark:bg-neutral-800 border-neutral-700 dark:border-neutral-900', text:'text-white'                 },
-  red:     { bar:'bg-red-600 dark:bg-red-800 border-red-700 dark:border-red-900',                 text:'text-white'                 },
-  orange:  { bar:'bg-orange-500 dark:bg-orange-700 border-orange-600 dark:border-orange-800',     text:'text-white'                 },
-  amber:   { bar:'bg-amber-400 dark:bg-amber-700 border-amber-500 dark:border-amber-800',         text:'text-black dark:text-white' },
-  yellow:  { bar:'bg-yellow-400 dark:bg-yellow-600 border-yellow-500 dark:border-yellow-700',     text:'text-black dark:text-white' },
-  lime:    { bar:'bg-lime-500 dark:bg-lime-700 border-lime-600 dark:border-lime-800',             text:'text-white'                 },
-  green:   { bar:'bg-green-600 dark:bg-green-800 border-green-700 dark:border-green-900',         text:'text-white'                 },
-  emerald: { bar:'bg-emerald-600 dark:bg-emerald-800 border-emerald-700 dark:border-emerald-900', text:'text-white'                 },
-  teal:    { bar:'bg-teal-600 dark:bg-teal-800 border-teal-700 dark:border-teal-900',             text:'text-white'                 },
-  cyan:    { bar:'bg-cyan-500 dark:bg-cyan-700 border-cyan-600 dark:border-cyan-800',             text:'text-white'                 },
-  sky:     { bar:'bg-sky-500 dark:bg-sky-700 border-sky-600 dark:border-sky-800',                 text:'text-white'                 },
-  blue:    { bar:'bg-blue-600 dark:bg-blue-800 border-blue-700 dark:border-blue-900',             text:'text-white'                 },
-  indigo:  { bar:'bg-indigo-600 dark:bg-indigo-800 border-indigo-700 dark:border-indigo-900',     text:'text-white'                 },
-  violet:  { bar:'bg-violet-600 dark:bg-violet-800 border-violet-700 dark:border-violet-900',     text:'text-white'                 },
-  purple:  { bar:'bg-purple-600 dark:bg-purple-800 border-purple-700 dark:border-purple-900',     text:'text-white'                 },
-  fuchsia: { bar:'bg-fuchsia-600 dark:bg-fuchsia-800 border-fuchsia-700 dark:border-fuchsia-900', text:'text-white'                 },
-  pink:    { bar:'bg-pink-500 dark:bg-pink-700 border-pink-600 dark:border-pink-800',             text:'text-white'                 },
-  rose:    { bar:'bg-rose-600 dark:bg-rose-800 border-rose-700 dark:border-rose-900',             text:'text-white'                 },
+  stone:   { bar:'bg-stone-600/85 dark:bg-stone-800/85 border-stone-700 dark:border-stone-900',         text:'text-white'                 },
+  gray:    { bar:'bg-gray-600/85 dark:bg-gray-800/85 border-gray-700 dark:border-gray-900',             text:'text-white'                 },
+  zinc:    { bar:'bg-zinc-600/85 dark:bg-zinc-800/85 border-zinc-700 dark:border-zinc-900',             text:'text-white'                 },
+  slate:   { bar:'bg-slate-600/85 dark:bg-slate-800/85 border-slate-700 dark:border-slate-900',         text:'text-white'                 },
+  neutral: { bar:'bg-neutral-600/85 dark:bg-neutral-800/85 border-neutral-700 dark:border-neutral-900', text:'text-white'                 },
+  red:     { bar:'bg-red-600/85 dark:bg-red-800/85 border-red-700 dark:border-red-900',                 text:'text-white'                 },
+  orange:  { bar:'bg-orange-500/85 dark:bg-orange-700/85 border-orange-600 dark:border-orange-800',     text:'text-white'                 },
+  amber:   { bar:'bg-amber-400/85 dark:bg-amber-700/85 border-amber-500 dark:border-amber-800',         text:'text-black dark:text-white' },
+  yellow:  { bar:'bg-yellow-400/85 dark:bg-yellow-600/85 border-yellow-500 dark:border-yellow-700',     text:'text-black dark:text-white' },
+  lime:    { bar:'bg-lime-500/85 dark:bg-lime-700/85 border-lime-600 dark:border-lime-800',             text:'text-white'                 },
+  green:   { bar:'bg-green-600/85 dark:bg-green-800/85 border-green-700 dark:border-green-900',         text:'text-white'                 },
+  emerald: { bar:'bg-emerald-600/85 dark:bg-emerald-800/85 border-emerald-700 dark:border-emerald-900', text:'text-white'                 },
+  teal:    { bar:'bg-teal-600/85 dark:bg-teal-800/85 border-teal-700 dark:border-teal-900',             text:'text-white'                 },
+  cyan:    { bar:'bg-cyan-500/85 dark:bg-cyan-700/85 border-cyan-600 dark:border-cyan-800',             text:'text-white'                 },
+  sky:     { bar:'bg-sky-500/85 dark:bg-sky-700/85 border-sky-600 dark:border-sky-800',                 text:'text-white'                 },
+  blue:    { bar:'bg-blue-600/85 dark:bg-blue-800/85 border-blue-700 dark:border-blue-900',             text:'text-white'                 },
+  indigo:  { bar:'bg-indigo-600/85 dark:bg-indigo-800/85 border-indigo-700 dark:border-indigo-900',     text:'text-white'                 },
+  violet:  { bar:'bg-violet-600/85 dark:bg-violet-800/85 border-violet-700 dark:border-violet-900',     text:'text-white'                 },
+  purple:  { bar:'bg-purple-600/85 dark:bg-purple-800/85 border-purple-700 dark:border-purple-900',     text:'text-white'                 },
+  fuchsia: { bar:'bg-fuchsia-600/85 dark:bg-fuchsia-800/85 border-fuchsia-700 dark:border-fuchsia-900', text:'text-white'                 },
+  pink:    { bar:'bg-pink-500/85 dark:bg-pink-700/85 border-pink-600 dark:border-pink-800',             text:'text-white'                 },
+  rose:    { bar:'bg-rose-600/85 dark:bg-rose-800/85 border-rose-700 dark:border-rose-900',             text:'text-white'                 },
 };
 
 // FIXED — page, cards and body text are always stone regardless of palette
@@ -159,20 +162,28 @@ const WIDGET = {
      ═══════════════════════════════════════════════════════════════════════ -->
 
 <!-- Top bar -->
-<header id="topbar" class="sticky top-0 z-30 flex items-center justify-between px-3 sm:px-6 py-3 shadow-sm border-b border-transparent transition-colors">
-  <div class="flex items-center gap-2">
-    <!-- Mobile widget drawer toggle. Hidden by default; render() reveals it only on
-         small screens when there is at least one non-group widget to show. -->
+<header id="topbar" class="sticky top-0 z-30 flex items-center justify-between px-3 sm:px-6 py-2.5 shadow-sm border-b border-transparent transition-colors backdrop-blur-md backdrop-saturate-150">
+  <div class="flex items-center gap-2.5">
+    <!-- Favicon doubles as the widget-drawer toggle. /api/favicon always resolves
+         (uploaded favicon, or the bundled default), shown in cover mode. -->
     <button id="sidebarToggle" title="Widgets"
-      class="hidden rounded-lg p-2 -ml-1 opacity-70 hover:opacity-100 transition-opacity">
-      <svg class="w-5 h-5" fill="currentColor" aria-hidden="true"><use href="/bootstrap-icons.svg#layout-sidebar"/></svg>
+      class="flex items-center justify-center w-8 h-8 -ml-0.5 rounded-lg overflow-hidden bg-white/10 hover:bg-white/20 ring-1 ring-white/15 transition-colors flex-shrink-0">
+      <img id="topbarFavicon" src="/api/favicon" alt="" class="w-full h-full object-cover">
     </button>
-    <img id="topbarFavicon" src="/api/favicon" alt="" class="w-6 h-6 object-contain flex-shrink-0" onerror="this.style.display='none'">
-    <h1 id="dashTitle" class="text-xl font-semibold tracking-tight select-none"></h1>
+    <h1 id="dashTitle" class="text-lg font-semibold tracking-tight leading-none select-none"></h1>
+  </div>
+  <!-- Centered inline search (desktop only). First keystroke hands off to the
+       full search overlay, which owns results and keyboard navigation. -->
+  <div class="hidden md:flex flex-1 justify-center px-6 min-w-0">
+    <div class="relative w-full max-w-md">
+      <svg class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 opacity-60" fill="currentColor" aria-hidden="true"><use href="/bootstrap-icons.svg#search"/></svg>
+      <input id="topbarSearch" type="text" placeholder="Search links…" autocomplete="off"
+        class="w-full pl-9 pr-3 py-1.5 rounded-full text-sm text-white placeholder-white/60 bg-white/10 ring-1 ring-white/15 focus:bg-white/20 focus:ring-white/30 outline-none transition-colors">
+    </div>
   </div>
   <div class="relative">
     <button id="menuBtn" title="Menu"
-      class="rounded-lg p-2 opacity-70 hover:opacity-100 transition-opacity">
+      class="rounded-full p-2 bg-white/10 hover:bg-white/20 ring-1 ring-white/10 transition-colors">
       <svg class="w-5 h-5" fill="currentColor" aria-hidden="true"><use href="/bootstrap-icons.svg#list"/></svg>
     </button>
     <div id="menuDropdown"
@@ -222,6 +233,11 @@ const WIDGET = {
         class="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-700/60 transition-colors">
         <svg class="w-4 h-4 flex-shrink-0" fill="currentColor" aria-hidden="true"><use href="/bootstrap-icons.svg#cloud-sun"/></svg>
         <span id="menuWeatherLabel">Weather</span>
+      </button>
+      <button id="menuFiltersToggle"
+        class="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-700/60 transition-colors">
+        <svg class="w-4 h-4 flex-shrink-0" fill="currentColor" aria-hidden="true"><use href="/bootstrap-icons.svg#funnel"/></svg>
+        <span id="menuFiltersLabel">Filters</span>
       </button>
       <div id="menuNotesToggleContainer"></div>
       <div class="flex items-center justify-between px-4 py-2">
@@ -276,12 +292,18 @@ const WIDGET = {
          bg-white dark:bg-stone-950 text-stone-900 dark:text-stone-50
          border-r border-stone-200 dark:border-stone-800
          shadow-2xl -translate-x-full transition-transform duration-200 ease-out">
-  <div class="sticky top-0 z-10 flex items-center justify-between px-4 py-3 border-b
-              border-stone-200 dark:border-stone-800
-              bg-white dark:bg-stone-950 text-stone-900 dark:text-stone-50">
-    <span class="text-sm font-semibold tracking-tight">Widgets</span>
+  <div class="sticky top-0 z-10 flex items-center justify-between gap-2 px-4 py-3 border-b
+              border-stone-200/70 dark:border-stone-800/70
+              bg-white/70 dark:bg-stone-950/70 backdrop-blur-md backdrop-saturate-150
+              text-stone-900 dark:text-stone-50">
+    <span class="flex items-center gap-2">
+      <span class="flex items-center justify-center w-7 h-7 rounded-lg overflow-hidden ring-1 ring-stone-200 dark:ring-stone-700 flex-shrink-0">
+        <img src="/api/favicon" alt="" class="w-full h-full object-cover">
+      </span>
+      <span class="text-sm font-semibold tracking-tight">Widgets</span>
+    </span>
     <button id="sidebarClose" title="Close"
-      class="rounded-lg p-1.5 text-stone-700 dark:text-stone-200 opacity-80 hover:opacity-100 transition-opacity">
+      class="rounded-full p-1.5 bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 ring-1 ring-stone-200 dark:ring-stone-700 text-stone-700 dark:text-stone-200 transition-colors">
       <svg class="w-5 h-5" fill="currentColor" aria-hidden="true"><use href="/bootstrap-icons.svg#x-lg"/></svg>
     </button>
   </div>
@@ -605,7 +627,7 @@ function applyTheme(dark) {
 function applyBase(palette) {
   const t = TOPBAR[palette] || TOPBAR.stone;
   const topbar = document.getElementById('topbar');
-  topbar.className = `sticky top-0 z-30 flex items-center justify-between px-3 sm:px-6 py-3 shadow-sm border-b transition-colors ${t.bar} ${t.text}`;
+  topbar.className = `sticky top-0 z-30 flex items-center justify-between px-3 sm:px-6 py-2.5 shadow-sm border-b transition-colors backdrop-blur-md backdrop-saturate-150 ${t.bar} ${t.text}`;
 
   const me = document.getElementById('menuEdit');
   if (me) {
@@ -639,6 +661,12 @@ function applyBase(palette) {
   if (wt) {
     const wxOn = !!(state.config && state.config.showWeather);
     wt.className = `w-full flex items-center gap-3 px-4 py-2.5 text-sm ${wxOn ? 'font-semibold text-indigo-600 dark:text-indigo-400' : 'text-stone-700 dark:text-stone-200'} hover:bg-stone-100 dark:hover:bg-stone-700/60 transition-colors`;
+  }
+
+  const ft = document.getElementById('menuFiltersToggle');
+  if (ft) {
+    const filtersOn = !!(state.config && state.config.showFilters);
+    ft.className = `w-full flex items-center gap-3 px-4 py-2.5 text-sm ${filtersOn ? 'font-semibold text-indigo-600 dark:text-indigo-400' : 'text-stone-700 dark:text-stone-200'} hover:bg-stone-100 dark:hover:bg-stone-700/60 transition-colors`;
   }
 
   const notesContainer = document.getElementById('menuNotesToggleContainer');
@@ -685,7 +713,8 @@ function linkUrl(link) {
   if (state.features && state.features.splitLinks && isMobileView() && link.mobileUrl) {
     return link.mobileUrl;
   }
-  return link.url;
+  // Prefer the failover winner the server resolved by ping; fall back to primary.
+  return (statusMap[link.id] && statusMap[link.id].activeUrl) || link.url;
 }
 
 // ─── Mobile widget drawer ─────────────────────────────────────────────────────
@@ -697,10 +726,15 @@ function setSidebar(open) {
   const aside = document.getElementById('mobileSidebar');
   const back  = document.getElementById('sidebarBackdrop');
   if (!aside || !back) return;
+  // Docked mode only applies on desktop; phones always use the overlay so the
+  // drawer does not eat the whole viewport.
+  const docked = open && !isMobileView() && (state.config && state.config.sidebarMode === 'docked');
   aside.classList.toggle('-translate-x-full', !open);
-  back.classList.toggle('hidden', !open);
-  // Stop the page behind the drawer scrolling while it is open.
-  document.body.classList.toggle('overflow-hidden', open);
+  aside.classList.toggle('sidebar-docked', docked);
+  // Docked pushes the page over (no dim); overlay floats on top with a backdrop.
+  back.classList.toggle('hidden', !open || docked);
+  document.body.classList.toggle('overflow-hidden', open && !docked);
+  document.body.style.paddingLeft = docked ? '20rem' : '';
 }
 
 function initSidebar() {
@@ -716,8 +750,12 @@ function initSidebar() {
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') setSidebar(false);
   });
-  // Rotating to landscape / resizing past the breakpoint must not strand the drawer.
-  window.addEventListener('resize', () => { if (!isMobileView()) setSidebar(false); });
+  // Recompute overlay/docked when crossing the mobile breakpoint so a docked
+  // drawer drops its page-push (and backdrop returns) once the viewport is small.
+  window.addEventListener('resize', () => {
+    const aside = document.getElementById('mobileSidebar');
+    if (aside && !aside.classList.contains('-translate-x-full')) setSidebar(true);
+  });
 }
 
 function openLink(link) {
@@ -730,6 +768,15 @@ function openLink(link) {
   } else {
     window.open(target, '_blank', 'noopener');
   }
+}
+
+// Force a new browser tab regardless of the link's openMode (Ctrl/Cmd+click or
+// Ctrl/Cmd+Enter in search), and move focus to it. 'noopener' is dropped so the
+// handle comes back; opener is nulled manually to keep reverse-tabnabbing safety.
+function openInNewTab(link) {
+  if (!link) return;
+  const w = window.open(linkUrl(link), '_blank');
+  if (w) { try { w.opener = null; } catch {} w.focus(); }
 }
 
 function openIframeViewer(link) {
@@ -767,15 +814,16 @@ function render() {
 
   const container = document.getElementById('groupsContainer');
   container.innerHTML = '';
+  container.style.cssText = ''; // clear stale inline styles (gap, column-*) between modes
+  const gap = cfg.gap ?? 20;
 
-  // Widget drawer: on phones the non-group widgets go into the off-canvas panel so
-  // the link groups get the column to themselves. Skipped in edit mode, where the
-  // single-column layout with its move-up/down arrows is how reordering works.
+  // Widget drawer: in view mode everything in column 1 (the sidebar column) goes
+  // into the off-canvas panel. Skipped in edit mode, where column 1 shows inline
+  // so you can drag cards into and out of it.
   const sidebar     = document.getElementById('sidebarContent');
-  const sidebarBtn  = document.getElementById('sidebarToggle');
-  const useSidebar  = isMobile && !state.editMode;
+  const useSidebar  = !state.editMode;
   if (sidebar) sidebar.innerHTML = '';
-  if (!useSidebar) { setSidebar(false); if (sidebarBtn) sidebarBtn.classList.add('hidden'); }
+  if (!useSidebar) setSidebar(false);
 
   if (isList) {
     // List mode: on mobile use widgetColumns flattened (preserves desktop column order);
@@ -783,7 +831,11 @@ function render() {
     const listOrder = (isMobile && (cfg.widgetColumns || []).length > 0)
       ? buildWidgetColumns(cfg).flat()
       : buildWidgetOrder(cfg);
-    container.className = 'p-3 sm:p-6 columns-1 gap-3 sm:gap-5';
+    container.className = 'p-3 sm:p-6 columns-1';
+    container.style.gap = '';
+
+    // Column 1 is the sidebar column — its members go to the drawer in view mode.
+    const sidebarIds = new Set((buildWidgetColumns(cfg)[0]) || []);
 
     const mkArrow = (label, title, disabled, onClick) => {
       const btn = document.createElement('button');
@@ -838,20 +890,15 @@ function render() {
         wrapper.appendChild(bar);
         container.appendChild(wrapper);
       } else {
-        card.classList.add('break-inside-avoid', 'mb-4');
-        // A widget id that resolves to a link group stays in the main column;
-        // everything else (clock/notes/feeds/iframes/countdowns/calendars) goes
-        // into the drawer when it is in use.
-        const isGroup = (cfg.groups || []).some(g => g.id === id);
-        if (useSidebar && !isGroup && sidebar) sidebar.appendChild(card);
+        card.classList.add('break-inside-avoid');
+        card.style.marginBottom = gap + 'px';
+        // Column 1 members go to the drawer; everything else stacks in the main column.
+        if (useSidebar && sidebarIds.has(id) && sidebar) sidebar.appendChild(card);
         else container.appendChild(card);
       }
     });
-    if (useSidebar && sidebarBtn) {
-      // Only offer the drawer when something actually landed in it.
-      sidebarBtn.classList.toggle('hidden', sidebar.childElementCount === 0);
-      if (sidebar.childElementCount === 0) setSidebar(false);
-    }
+    // Favicon/logo button is always visible; just don't leave an empty drawer open.
+    if (useSidebar && sidebar.childElementCount === 0) setSidebar(false);
     if (state.editMode) {
       const addBtn = document.createElement('button');
       addBtn.className = `rounded-xl border-2 border-dashed border-stone-300 dark:border-stone-600 p-6 text-sm font-medium ${FIXED.sub} hover:bg-black/5 dark:hover:bg-white/5 transition-colors w-full break-inside-avoid mb-5`;
@@ -859,41 +906,69 @@ function render() {
       addBtn.onclick = openAddWidgetModal;
       container.appendChild(addBtn);
     }
+  } else if (!state.editMode) {
+    // Grid view: responsive CSS multi-column masonry. As many ~280px columns as
+    // the width allows; cards flow to fill vertical gaps instead of leaving a
+    // short column empty. Column 1 (the sidebar column) still goes to the drawer.
+    container.className = 'p-6';
+    container.style.columnWidth = '280px';
+    container.style.columnGap = gap + 'px';
+    const cols = buildWidgetColumns(cfg);
+    const placeCard = (id, toSidebar) => {
+      const card = resolveCard(id, cfg);
+      if (!card) return;
+      if (state.activeTag) {
+        const g = (cfg.groups || []).find(x => x.id === id);
+        if (g && !g.links.some(l => (l.tags || []).includes(state.activeTag))) return;
+      }
+      card.dataset.widgetId = id;
+      if (toSidebar && useSidebar && sidebar) { sidebar.appendChild(card); return; }
+      card.classList.add('break-inside-avoid');
+      card.style.marginBottom = gap + 'px';
+      container.appendChild(card);
+    };
+    (cols[0] || []).forEach(id => placeCard(id, true));         // sidebar column → drawer
+    cols.slice(1).flat().forEach(id => placeCard(id, false));   // other columns → masonry flow
   } else {
-    // Grid mode: Trello-style explicit column containers with horizontal scroll
-    container.className = 'p-6 flex gap-5 items-start overflow-x-auto';
+    // Grid edit mode: Trello-style explicit columns in one horizontally scrolling row.
+    container.className = 'p-6 flex items-start overflow-x-auto';
+    container.style.gap = gap + 'px';
     const cols = buildWidgetColumns(cfg);
 
     cols.forEach((colItems, colIdx) => {
       const colEl = document.createElement('div');
-      colEl.className = 'flex-1 min-w-[220px] flex flex-col gap-4';
+      colEl.className = 'flex-1 min-w-[220px] flex flex-col';
+      colEl.style.gap = gap + 'px';
       colEl.dataset.colIdx = colIdx;
 
       // ── Column header (edit mode only) ──────────────────────────────────────
       if (state.editMode) {
+        const isSidebarCol = colIdx === 0;
         const hdr = document.createElement('div');
-        hdr.className = `flex items-center gap-2 px-3 py-2 rounded-xl border ${FIXED.card} text-xs font-medium ${FIXED.sub} select-none cursor-default`;
+        hdr.className = `flex items-center gap-2 px-3 py-2 rounded-xl border ${isSidebarCol ? 'border-dashed' : ''} ${FIXED.card} text-xs font-medium ${FIXED.sub} select-none cursor-default`;
 
-        // Column drag handle
-        const handle = mkHandle(`${FIXED.sub} cursor-grab active:cursor-grabbing`);
-        handle.draggable = true;
-        handle.addEventListener('dragstart', e => {
-          e.stopPropagation();
-          dnd = { type: 'column', idx: colIdx };
-          e.dataTransfer.effectAllowed = 'move';
-          e.dataTransfer.setData('text/plain', `col-${colIdx}`);
-          setTimeout(() => { colEl.style.opacity = '0.4'; }, 0);
-        });
-        handle.addEventListener('dragend', () => {
-          colEl.style.opacity = '';
-          clearColumnIndicators();
-          dnd = { type: null };
-        });
-        hdr.appendChild(handle);
+        // Column drag handle — the sidebar column is pinned first, so no handle.
+        if (!isSidebarCol) {
+          const handle = mkHandle(`${FIXED.sub} cursor-grab active:cursor-grabbing`);
+          handle.draggable = true;
+          handle.addEventListener('dragstart', e => {
+            e.stopPropagation();
+            dnd = { type: 'column', idx: colIdx };
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', `col-${colIdx}`);
+            setTimeout(() => { colEl.style.opacity = '0.4'; }, 0);
+          });
+          handle.addEventListener('dragend', () => {
+            colEl.style.opacity = '';
+            clearColumnIndicators();
+            dnd = { type: null };
+          });
+          hdr.appendChild(handle);
+        }
 
         const label = document.createElement('span');
         label.className = 'flex-1';
-        label.textContent = `Column ${colIdx + 1}`;
+        label.textContent = isSidebarCol ? '☰ Sidebar' : `Column ${colIdx}`;
         hdr.appendChild(label);
 
         const countBadge = document.createElement('span');
@@ -901,17 +976,19 @@ function render() {
         countBadge.textContent = colItems.length;
         hdr.appendChild(countBadge);
 
-        // Delete column button
-        const delBtn = mkBtn('✕', 'Remove column', `opacity-50 hover:opacity-100 transition-opacity px-1`, async () => {
-          const currentCols = buildWidgetColumns(state.config);
-          if (currentCols.length <= 1) return;
-          const newCols = currentCols.map((c, i) => i === colIdx ? [] : [...c]);
-          // Move orphaned items to column 0
-          currentCols[colIdx].forEach(id => newCols[0].push(id));
-          const filtered = newCols.filter((_, i) => i !== colIdx);
-          await saveColumns(filtered);
-        });
-        hdr.appendChild(delBtn);
+        // Delete column button — the sidebar column cannot be removed.
+        if (!isSidebarCol) {
+          const delBtn = mkBtn('✕', 'Remove column', `opacity-50 hover:opacity-100 transition-opacity px-1`, async () => {
+            const currentCols = buildWidgetColumns(state.config);
+            if (currentCols.length <= 1) return;
+            const newCols = currentCols.map((c, i) => i === colIdx ? [] : [...c]);
+            // Move orphaned items into the sidebar column (column 1)
+            currentCols[colIdx].forEach(id => newCols[0].push(id));
+            const filtered = newCols.filter((_, i) => i !== colIdx);
+            await saveColumns(filtered);
+          });
+          hdr.appendChild(delBtn);
+        }
 
         colEl.appendChild(hdr);
       }
@@ -974,8 +1051,15 @@ function render() {
         }
         card.dataset.widgetId = id;
         if (state.editMode) attachWidgetDnd(card, id);
-        colEl.appendChild(card);
+        // Column 1 is the sidebar column: in view mode everything in it goes to
+        // the off-canvas drawer, whatever its type. Other columns stay in the grid.
+        if (useSidebar && colIdx === 0 && sidebar) sidebar.appendChild(card);
+        else colEl.appendChild(card);
       });
+
+      // In view mode column 1 empties into the drawer, so skip rendering it (and
+      // any other column that ended up empty) as a grid column.
+      if (!state.editMode && colEl.childElementCount === 0) return;
 
       // ── Add widget button (per column, edit mode) ────────────────────────────
       if (state.editMode) {
@@ -1002,6 +1086,9 @@ function render() {
     }
   }
 
+  // Favicon/logo button is always visible; just don't leave an empty drawer open.
+  if (useSidebar && sidebar.childElementCount === 0) setSidebar(false);
+
   renderPinned();
   renderTagFilterBar();
   applyBackground(cfg.background);
@@ -1023,8 +1110,136 @@ function resolveCard(id, cfg) {
   const i = (cfg.iframes    || []).find(x => x.id === id); if (i) return renderIframeCard(i);
   const c = (cfg.countdowns || []).find(x => x.id === id); if (c) return renderCountdownCard(c);
   const ca= (cfg.calendars  || []).find(x => x.id === id); if (ca) return renderCalendarCard(ca);
-  const g = (cfg.groups     || []).find(x => x.id === id); if (g) return renderGroupCard(g);
+  const g = (cfg.groups     || []).find(x => x.id === id);
+  if (g) {
+    // Hidden groups vanish in view mode and show a restorable ghost in edit mode.
+    if ((cfg.hiddenGroups || []).includes(id)) return state.editMode ? renderGhostGroup(g) : null;
+    return renderGroupCard(g);
+  }
   return null;
+}
+
+// Dimmed placeholder for a hidden group, shown only in edit mode so it can be
+// brought back without opening settings.
+function renderGhostGroup(group) {
+  const sec = document.createElement('div');
+  sec.className = `group-section rounded-xl overflow-hidden border border-dashed border-stone-300 dark:border-stone-600 ${FIXED.card} opacity-40 hover:opacity-70 transition-opacity`;
+  sec.dataset.groupId = group.id;
+  const bar = document.createElement('div');
+  bar.className = 'flex items-center justify-between gap-2 px-3 py-2.5';
+  const name = document.createElement('span');
+  name.className = `text-sm font-semibold truncate ${FIXED.sub}`;
+  name.textContent = `${group.name} · hidden`;
+  bar.appendChild(name);
+  bar.appendChild(mkBtn('↺ Restore', 'Restore group',
+    `flex-shrink-0 text-xs font-medium px-2 py-1 rounded-lg border border-stone-300 dark:border-stone-600 ${FIXED.sub} hover:bg-black/5 dark:hover:bg-white/5 transition-colors`,
+    async e => { e.stopPropagation(); await toggleGroupHidden(group.id, false); }));
+  sec.appendChild(bar);
+  return sec;
+}
+
+async function toggleGroupHidden(id, hide) {
+  const set = new Set(state.config.hiddenGroups || []);
+  if (hide) set.add(id); else set.delete(id);
+  const arr = [...set];
+  await api('PUT', '/api/config', { hiddenGroups: arr });
+  state.config.hiddenGroups = arr;
+  render();
+}
+
+// Remove any open group-action popovers. They live on <body> (not inside the
+// group card) so the card's overflow-hidden does not clip them.
+function closeAllGroupMenus() {
+  document.querySelectorAll('.group-actions-menu').forEach(m => m.remove());
+}
+if (!window.__groupMenuCloser) {
+  window.__groupMenuCloser = true;
+  document.addEventListener('click', closeAllGroupMenus);
+  window.addEventListener('scroll', closeAllGroupMenus, true);
+}
+
+// Gear button that opens a popover with all edit-mode actions for a group.
+function buildGroupActionsMenu(group) {
+  const menu = document.createElement('div');
+  menu.className = 'group-actions-menu hidden fixed w-40 rounded-xl shadow-xl overflow-hidden border bg-white dark:bg-stone-800 border-stone-200 dark:border-stone-700 py-1 z-50';
+  menu.addEventListener('click', e => e.stopPropagation());
+
+  const item = (label, danger, handler) => {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.className = `w-full text-left px-3 py-2 text-sm ${danger
+      ? 'text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20'
+      : 'text-stone-700 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-700/60'} transition-colors`;
+    b.addEventListener('click', async e => { e.stopPropagation(); closeAllGroupMenus(); await handler(); });
+    return b;
+  };
+
+  menu.appendChild(item('Sort A–Z', false, async () => {
+    const sorted = [...group.links].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+    await api('PUT', `/api/groups/${group.id}/links/reorder`, { order: sorted.map(l => l.id) });
+    await reload();
+  }));
+  menu.appendChild(item('Edit', false, async () => { openGroupModal(group); }));
+  menu.appendChild(item('Hide', false, async () => { await toggleGroupHidden(group.id, true); }));
+  menu.appendChild(item('Delete', true, async () => {
+    if (!confirm(`Delete group "${group.name}" and all its links?`)) return;
+    await api('DELETE', `/api/groups/${group.id}`);
+    await reload();
+  }));
+
+  const gear = mkBtn('⚙', 'Group actions', 'text-white/80 hover:text-white text-base px-1', e => {
+    e.stopPropagation();
+    const wasOpen = !menu.classList.contains('hidden');
+    closeAllGroupMenus();
+    if (wasOpen) return;
+    const r = gear.getBoundingClientRect();
+    menu.style.top  = (r.bottom + 4) + 'px';
+    menu.style.left = Math.max(8, r.right - 160) + 'px';
+    document.body.appendChild(menu);
+    menu.classList.remove('hidden');
+  });
+  return gear;
+}
+
+// Same popover pattern for a link's edit-mode actions (pin/edit/delete).
+function buildLinkActionsMenu(group, link, gearCls) {
+  const menu = document.createElement('div');
+  menu.className = 'group-actions-menu hidden fixed w-40 rounded-xl shadow-xl overflow-hidden border bg-white dark:bg-stone-800 border-stone-200 dark:border-stone-700 py-1 z-50';
+  menu.addEventListener('click', e => e.stopPropagation());
+
+  const item = (label, danger, handler) => {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.className = `w-full text-left px-3 py-2 text-sm ${danger
+      ? 'text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20'
+      : 'text-stone-700 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-700/60'} transition-colors`;
+    b.addEventListener('click', async e => { e.stopPropagation(); closeAllGroupMenus(); await handler(); });
+    return b;
+  };
+
+  menu.appendChild(item(link.pinned ? 'Unpin' : 'Pin to top', false, async () => {
+    await api('PUT', `/api/groups/${group.id}/links/${link.id}`, { pinned: !link.pinned });
+    await reload();
+  }));
+  menu.appendChild(item('Edit', false, async () => { openLinkModal(group.id, link); }));
+  menu.appendChild(item('Delete', true, async () => {
+    if (!confirm(`Delete link "${link.name}"?`)) return;
+    await api('DELETE', `/api/groups/${group.id}/links/${link.id}`);
+    await reload();
+  }));
+
+  const gear = mkBtn('⚙', 'Link actions', gearCls, e => {
+    e.stopPropagation();
+    const wasOpen = !menu.classList.contains('hidden');
+    closeAllGroupMenus();
+    if (wasOpen) return;
+    const r = gear.getBoundingClientRect();
+    menu.style.top  = (r.bottom + 4) + 'px';
+    menu.style.left = Math.max(8, r.right - 160) + 'px';
+    document.body.appendChild(menu);
+    menu.classList.remove('hidden');
+  });
+  return gear;
 }
 
 function applyCustomCss(css) {
@@ -1038,6 +1253,7 @@ function renderTagFilterBar() {
   const allTags = [...new Set((cfg.groups || []).flatMap(g => g.links.flatMap(l => l.tags || [])))].sort();
   const bar   = document.getElementById('tagFilterBar');
   const chips = document.getElementById('tagChips');
+  if (!cfg.showFilters) { bar.classList.add('hidden'); state.activeTag = null; return; }
   if (!allTags.length) { bar.classList.add('hidden'); state.activeTag = null; return; }
   bar.classList.remove('hidden');
   chips.innerHTML = '';
@@ -1163,22 +1379,7 @@ function renderGroupCard(group) {
   rightControls.className = 'flex items-center gap-1 flex-shrink-0';
 
   if (state.editMode) {
-    rightControls.appendChild(mkBtn('⇅', 'Sort A–Z', 'text-white/70 hover:text-white text-base px-1', async e => {
-      e.stopPropagation();
-      const sorted = [...group.links].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
-      await api('PUT', `/api/groups/${group.id}/links/reorder`, { order: sorted.map(l => l.id) });
-      await reload();
-    }));
-    rightControls.appendChild(mkBtn('✎', 'Edit group', 'text-white/80 hover:text-white text-base px-1', e => {
-      e.stopPropagation();
-      openGroupModal(group);
-    }));
-    rightControls.appendChild(mkBtn('✕', 'Delete group', 'text-white/70 hover:text-white text-base px-1', async e => {
-      e.stopPropagation();
-      if (!confirm(`Delete group "${group.name}" and all its links?`)) return;
-      await api('DELETE', `/api/groups/${group.id}`);
-      await reload();
-    }));
+    rightControls.appendChild(buildGroupActionsMenu(group));
   }
 
   const chevron = document.createElement('span');
@@ -1274,8 +1475,13 @@ function renderGroupCard(group) {
       } else {
         row.classList.add('cursor-pointer', 'hover:bg-black/5', 'dark:hover:bg-white/5');
         row.tabIndex = 0;
-        row.addEventListener('click', () => openLink(link));
-        row.addEventListener('keydown', e => { if (e.key === 'Enter') openLink(link); });
+        row.addEventListener('click', e => {
+          if (e.ctrlKey || e.metaKey) openInNewTab(link); else openLink(link);
+        });
+        row.addEventListener('keydown', e => {
+          if (e.key !== 'Enter') return;
+          if (e.ctrlKey || e.metaKey) openInNewTab(link); else openLink(link);
+        });
       }
 
       // Icon (includes status dot)
@@ -1300,7 +1506,7 @@ function renderGroupCard(group) {
         desc.textContent = link.description;
         textWrap.appendChild(desc);
       }
-      if ((link.tags || []).length && !isList) {
+      if ((link.tags || []).length && !isList && cfg.showCardTags !== false) {
         const tagRow = document.createElement('div');
         tagRow.className = 'flex flex-wrap gap-1 mt-0.5';
         (link.tags || []).forEach(tag => {
@@ -1342,21 +1548,7 @@ function renderGroupCard(group) {
           }));
         }
 
-        editControls.appendChild(mkBtn(
-          link.pinned ? '★' : '☆',
-          link.pinned ? 'Unpin' : 'Pin to top',
-          `${btnCls} ${link.pinned ? 'text-yellow-500' : b.sub}`,
-          async () => {
-            await api('PUT', `/api/groups/${group.id}/links/${link.id}`, { pinned: !link.pinned });
-            await reload();
-          }
-        ));
-        editControls.appendChild(mkBtn('✎', 'Edit link', `${btnCls} ${b.sub}`, () => openLinkModal(group.id, link)));
-        editControls.appendChild(mkBtn('✕', 'Delete link', `${btnCls} text-red-400`, async () => {
-          if (!confirm(`Delete link "${link.name}"?`)) return;
-          await api('DELETE', `/api/groups/${group.id}/links/${link.id}`);
-          await reload();
-        }));
+        editControls.appendChild(buildLinkActionsMenu(group, link, `${btnCls} ${b.sub}`));
         row.appendChild(editControls);
       }
 
@@ -1761,7 +1953,7 @@ function mkIconWrap(link, compact) {
 
 function applyStatusDots() {
   document.querySelectorAll('[data-status-id]').forEach(dot => {
-    const s = statusMap[dot.dataset.statusId];
+    const s = statusMap[dot.dataset.statusId] && statusMap[dot.dataset.statusId].status;
     dot.className = 'absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-white dark:ring-stone-800';
     if      (s === 'up')   dot.className += ' bg-green-400';
     else if (s === 'down') dot.className += ' bg-red-500';
@@ -1948,7 +2140,10 @@ document.addEventListener('keydown', e => {
     else if (e.key === 'ArrowUp') { e.preventDefault(); moveSearchSelection(-1); }
     else if (e.key === 'Enter') {
       const items = document.querySelectorAll('#searchResults li[data-search-idx]');
-      if (selectedSearchIdx >= 0 && items[selectedSearchIdx]) items[selectedSearchIdx].click();
+      const li = selectedSearchIdx >= 0 ? items[selectedSearchIdx] : null;
+      if (!li) return;
+      if (e.ctrlKey || e.metaKey) { e.preventDefault(); closeSearch(); openInNewTab(li._link); }
+      else li.click();
     }
   }
 });
@@ -2052,6 +2247,50 @@ function openLinkModal(groupId, link) {
   const urlInput = mkInput(link ? link.url : '', 'http://192.168.1.10:32400', b);
   urlInput.type = 'url';
   wrap.appendChild(urlInput);
+
+  // Alternative URLs (failover). Priority order top→bottom; the server pings each
+  // and opens the first that resolves, falling back to the primary when all fail.
+  const altLabel = mkLabel('Alternative URLs (optional)', b.sub);
+  altLabel.className += ' mt-3 block';
+  wrap.appendChild(altLabel);
+  const altHint = document.createElement('p');
+  altHint.className = `text-xs mb-1 ${b.sub}`;
+  altHint.textContent = 'Up to 5 backups tried in order if the primary is down (e.g. a Tailscale IP).';
+  wrap.appendChild(altHint);
+  const altWrap = document.createElement('div');
+  wrap.appendChild(altWrap);
+  const altInputs = [];
+  const addAltBtn = document.createElement('button');
+  addAltBtn.type = 'button';
+  addAltBtn.className = `text-sm mt-1 px-2 py-1 rounded-lg border border-dashed ${b.sub} hover:bg-black/5 dark:hover:bg-white/5 transition-colors`;
+  addAltBtn.textContent = '+ Add alternative';
+  const syncAddAltBtn = () => {
+    addAltBtn.disabled = altInputs.length >= 5;
+    addAltBtn.classList.toggle('opacity-40', altInputs.length >= 5);
+    addAltBtn.classList.toggle('pointer-events-none', altInputs.length >= 5);
+  };
+  function addAltRow(value) {
+    if (altInputs.length >= 5) return;
+    const row = document.createElement('div');
+    row.className = 'flex items-center gap-2 mt-2';
+    const inp = mkInput(value || '', 'https://backup.example.com or 100.x.y.z', b);
+    inp.type = 'url';
+    inp.className += ' flex-1';
+    const rm = mkBtn('✕', 'Remove', `px-2 ${b.sub} hover:text-red-500 transition-colors`, () => {
+      row.remove();
+      const i = altInputs.indexOf(inp);
+      if (i >= 0) altInputs.splice(i, 1);
+      syncAddAltBtn();
+    });
+    row.appendChild(inp);
+    row.appendChild(rm);
+    altWrap.appendChild(row);
+    altInputs.push(inp);
+    syncAddAltBtn();
+  }
+  (link && Array.isArray(link.altUrls) ? link.altUrls : []).forEach(u => addAltRow(u));
+  addAltBtn.addEventListener('click', () => addAltRow(''));
+  wrap.appendChild(addAltBtn);
 
   // Mobile URL — only offered when SPLIT_LINKS is enabled. The input is always
   // created so the save handler can read it unconditionally; it just stays out of
@@ -2405,6 +2644,7 @@ function openLinkModal(groupId, link) {
     if (!url) { urlInput.focus(); return; }
     const payload = {
       name, url,
+      altUrls: altInputs.map(i => i.value.trim()).filter(Boolean).slice(0, 5),
       mobileUrl: mobileUrlInput.value.trim(),
       openMode: openModeSelect.value,
       icon: iconInput.value.trim().replace(/[^a-z0-9-]/g, ''),
@@ -2620,6 +2860,60 @@ function openSettingsModal() {
   sharpRow.appendChild(sharpLabel); sharpRow.appendChild(sharpToggle);
   appPanel.appendChild(sharpRow);
 
+  const cardTagsRow = document.createElement('label');
+  cardTagsRow.className = 'flex items-center justify-between cursor-pointer mb-5';
+  const cardTagsLabel = document.createElement('div');
+  const cardTagsTitle = document.createElement('span'); cardTagsTitle.className = `text-sm font-medium ${b.text}`; cardTagsTitle.textContent = 'Show tags on cards';
+  const cardTagsDesc = document.createElement('p'); cardTagsDesc.className = `text-xs ${b.sub}`; cardTagsDesc.textContent = 'Tag chips under each link in grid view';
+  cardTagsLabel.appendChild(cardTagsTitle); cardTagsLabel.appendChild(cardTagsDesc);
+  const cardTagsToggle = document.createElement('input'); cardTagsToggle.type = 'checkbox'; cardTagsToggle.checked = cfg.showCardTags !== false;
+  cardTagsToggle.className = 'w-4 h-4 accent-indigo-600 flex-shrink-0';
+  cardTagsRow.appendChild(cardTagsLabel); cardTagsRow.appendChild(cardTagsToggle);
+  appPanel.appendChild(cardTagsRow);
+
+  let selectedGap = cfg.gap ?? 20;
+  const gapRow = document.createElement('div');
+  gapRow.className = 'mb-5';
+  const gapHead = document.createElement('div');
+  gapHead.className = 'flex items-center justify-between mb-1';
+  const gapTitle = document.createElement('span'); gapTitle.className = `text-sm font-medium ${b.text}`; gapTitle.textContent = 'Card gap';
+  const gapVal = document.createElement('span'); gapVal.className = `text-xs font-mono ${b.sub}`; gapVal.textContent = selectedGap + 'px';
+  gapHead.appendChild(gapTitle); gapHead.appendChild(gapVal);
+  gapRow.appendChild(gapHead);
+  const gapDesc = document.createElement('p'); gapDesc.className = `text-xs mb-2 ${b.sub}`; gapDesc.textContent = 'Spacing between cards and columns';
+  gapRow.appendChild(gapDesc);
+  const gapInput = document.createElement('input');
+  gapInput.type = 'range'; gapInput.min = '0'; gapInput.max = '64'; gapInput.step = '2'; gapInput.value = String(selectedGap);
+  gapInput.className = 'w-full accent-indigo-600';
+  gapInput.addEventListener('input', () => { selectedGap = Number(gapInput.value); gapVal.textContent = selectedGap + 'px'; });
+  gapRow.appendChild(gapInput);
+  appPanel.appendChild(gapRow);
+
+  let selectedSidebarMode = cfg.sidebarMode === 'docked' ? 'docked' : 'overlay';
+  const sbRow = document.createElement('div');
+  sbRow.className = 'mb-5';
+  const sbTitle = document.createElement('span'); sbTitle.className = `text-sm font-medium ${b.text}`; sbTitle.textContent = 'Desktop sidebar';
+  sbRow.appendChild(sbTitle);
+  const sbDesc = document.createElement('p'); sbDesc.className = `text-xs mb-2 ${b.sub}`; sbDesc.textContent = 'Overlay floats over content; Docked pushes content aside';
+  sbRow.appendChild(sbDesc);
+  const sbPills = document.createElement('div');
+  sbPills.className = 'flex gap-2';
+  const sbPillBase = 'flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition-colors';
+  const sbPillActive = 'bg-indigo-600 text-white border-indigo-600';
+  const sbPillIdle = `${b.card} ${b.text} border-stone-300 dark:border-stone-600 hover:bg-stone-100 dark:hover:bg-stone-700`;
+  [{ value: 'overlay', label: 'Overlay' }, { value: 'docked', label: 'Docked' }].forEach(opt => {
+    const btn = document.createElement('button');
+    btn.type = 'button'; btn.textContent = opt.label; btn.dataset.sbMode = opt.value;
+    btn.className = `${sbPillBase} ${opt.value === selectedSidebarMode ? sbPillActive : sbPillIdle}`;
+    btn.addEventListener('click', () => {
+      selectedSidebarMode = opt.value;
+      sbPills.querySelectorAll('button').forEach(b2 => { b2.className = `${sbPillBase} ${b2.dataset.sbMode === selectedSidebarMode ? sbPillActive : sbPillIdle}`; });
+    });
+    sbPills.appendChild(btn);
+  });
+  sbRow.appendChild(sbPills);
+  appPanel.appendChild(sbRow);
+
   const cssLabel = mkLabel('Custom CSS', b.sub);
   appPanel.appendChild(cssLabel);
   const cssHint = document.createElement('p'); cssHint.className = `text-xs mb-2 ${b.sub}`; cssHint.textContent = 'Injected into <style> on every page load.';
@@ -2715,6 +3009,9 @@ function openSettingsModal() {
       pingInterval: selectedPingInterval,
       background: { type: bgType, value: bgValue },
       sharpCorners: sharpToggle.checked,
+      gap: selectedGap,
+      showCardTags: cardTagsToggle.checked,
+      sidebarMode: selectedSidebarMode,
       customCss: cssArea.value,
     });
     closeModal();
@@ -2789,7 +3086,7 @@ function renderSearchResults(query) {
     const wrap = mkIconWrap(link);
     const dot = wrap.querySelector('[data-status-id]');
     if (dot) {
-      const s = statusMap[link.id];
+      const s = statusMap[link.id] && statusMap[link.id].status;
       dot.className = 'absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-white dark:ring-stone-900';
       if      (s === 'up')   dot.className += ' bg-green-400';
       else if (s === 'down') dot.className += ' bg-red-500';
@@ -2819,9 +3116,11 @@ function renderSearchResults(query) {
     badge.textContent = groupName;
     li.appendChild(badge);
 
-    li.addEventListener('click', () => {
+    li._link = link;
+    li.addEventListener('click', e => {
       closeSearch();
-      openLink(link);
+      if (e.ctrlKey || e.metaKey) openInNewTab(link);
+      else openLink(link);
     });
 
     list.appendChild(li);
@@ -2860,8 +3159,10 @@ function refreshFavicon() {
   const t = Date.now();
   const link = document.getElementById('faviconLink');
   if (link) link.href = '/api/favicon?t=' + t;
-  const img = document.getElementById('topbarFavicon');
-  if (img) { img.style.display = ''; img.src = '/api/favicon?t=' + t; }
+  // Refresh every favicon <img> (topbar button + sidebar header).
+  document.querySelectorAll('img[src^="/api/favicon"], #topbarFavicon').forEach(img => {
+    img.src = '/api/favicon?t=' + t;
+  });
 }
 
 // ─── Config import / export ───────────────────────────────────────────────────
@@ -3961,6 +4262,15 @@ document.getElementById('menuWeatherToggle').addEventListener('click', async () 
   if (next) fetchWeather();
 });
 
+document.getElementById('menuFiltersToggle').addEventListener('click', async () => {
+  closeMenu();
+  const next = !state.config.showFilters;
+  await api('PUT', '/api/config', { showFilters: next });
+  state.config.showFilters = next;
+  if (!next) state.activeTag = null;
+  render();
+});
+
 async function toggleNoteVisibility(noteId) {
   closeMenu();
   const hidden = new Set(state.config.hiddenNotes || []);
@@ -4007,6 +4317,25 @@ function updateClock() {
 setInterval(updateClock, 30_000);
 
 initSidebar();
+
+// Inline top-bar search: hands the query off to the full overlay on first input,
+// then focuses the overlay so its existing keyboard nav takes over.
+const topSearch = document.getElementById('topbarSearch');
+if (topSearch) {
+  topSearch.addEventListener('input', () => {
+    const q = topSearch.value;
+    topSearch.value = '';
+    if (!q) return;
+    if (!searchOpen) openSearch();
+    const si = document.getElementById('searchInput');
+    si.value = q;
+    renderSearchResults(q);
+    si.focus();
+  });
+  // Focus the search box on load (desktop); harmless when hidden on mobile.
+  requestAnimationFrame(() => topSearch.focus());
+}
+
 reload();
 
 // Re-render when crossing the small-screen breakpoint (< 640px)

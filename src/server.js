@@ -12,8 +12,10 @@ const PORT       = process.env.PORT       || 3000;
 const DATA_FILE  = process.env.DATA_FILE  || '/data/config.json';
 const DATA_TEMP  = DATA_FILE + '.tmp';
 const ICONS_DIR  = process.env.ICONS_DIR  || '/data/icons';
-const FAVICON_FILE = '/data/favicon';
-const FAVICON_MIME = '/data/favicon.mime';
+// Keep the favicon next to the config file so it honours DATA_FILE instead of a
+// hardcoded /data (which breaks any non-Docker run). Docker keeps /data/favicon.
+const FAVICON_FILE = process.env.FAVICON_FILE || path.join(path.dirname(DATA_FILE), 'favicon');
+const FAVICON_MIME = FAVICON_FILE + '.mime';
 
 // ─── Auth (optional, session-cookie based) ────────────────────────────────────
 
@@ -159,9 +161,13 @@ const DEFAULT_CONFIG = {
   viewMode: 'grid',
   showClock: false,
   showWeather: false,
+  showFilters: false,
   clockAccent: '',
   weatherAccent: '',
   sharpCorners: false,
+  gap: 20,
+  showCardTags: true,
+  sidebarMode: 'overlay',
   customCss: '',
   weather: { apiKey: '', city: '', units: 'metric' },
   background: { type: 'none', value: '' },
@@ -175,6 +181,7 @@ const DEFAULT_CONFIG = {
   widgetColumns: [],   // 2-D: array of columns, each column is an array of widget IDs
   colSpan:       {},
   hiddenNotes:   [],
+  hiddenGroups:  [],
 };
 
 function loadConfig() {
@@ -208,6 +215,15 @@ function findGroup(cfg, groupId) {
 
 /** linkId → 'up' | 'down' (in-memory only, resets on restart) */
 const statusCache = new Map();
+/** linkId → the highest-priority URL currently reachable (or the primary when
+ *  none are, so opening a link always has a target). In-memory only. */
+const activeUrlCache = new Map();
+
+/** Normalize up to 5 non-empty alternative URLs. */
+function sanitizeAltUrls(v) {
+  if (!Array.isArray(v)) return [];
+  return v.map(u => String(u || '').trim().slice(0, 2000)).filter(Boolean).slice(0, 5);
+}
 
 // Weather proxy cache
 let weatherCache     = null;
@@ -257,11 +273,23 @@ async function refreshAllStatuses() {
   const links = cfg.groups.flatMap(g => g.links);
   await Promise.all(
     links.map(async link => {
+      // Candidate URLs in priority order: primary first, then alternatives.
+      const candidates = [link.url, ...(Array.isArray(link.altUrls) ? link.altUrls : [])]
+        .filter(Boolean).slice(0, 6);
       if (link.ping === false) {
         statusCache.delete(link.id); // clear any stale status
-      } else {
-        statusCache.set(link.id, await checkLink(link.pingUrl || link.url));
+        activeUrlCache.set(link.id, link.url); // no probing → always use primary
+        return;
       }
+      // Walk the list; the first reachable URL wins. A per-link pingUrl override
+      // only substitutes for the primary's probe (its open target stays link.url).
+      let active = null;
+      for (let i = 0; i < candidates.length; i++) {
+        const probeUrl = i === 0 ? (link.pingUrl || candidates[0]) : candidates[i];
+        if (await checkLink(probeUrl) === 'up') { active = candidates[i]; break; }
+      }
+      statusCache.set(link.id, active ? 'up' : 'down');
+      activeUrlCache.set(link.id, active || link.url); // fall back to primary when all down
     })
   );
 }
@@ -281,7 +309,12 @@ setTimeout(schedulePingCycle, 2_000);
 app.get('/health', (req, res) => res.json({ ok: true }));
 
 app.get('/api/status', (req, res) => {
-  res.json(Object.fromEntries(statusCache));
+  // { linkId: { status: 'up'|'down'|null, activeUrl } }
+  const out = {};
+  for (const [id, activeUrl] of activeUrlCache) {
+    out[id] = { status: statusCache.get(id) ?? null, activeUrl };
+  }
+  res.json(out);
 });
 
 app.get('/api/auth', (req, res) => {
@@ -302,7 +335,7 @@ app.get('/api/config', (req, res) => {
 
 app.put('/api/config', (req, res) => {
   const cfg = loadConfig();
-  const { title, basePalette, darkMode, pingInterval, viewMode, showClock, showWeather, clockAccent, weatherAccent, sharpCorners, customCss, weather, background, widgetOrder, colSpan, hiddenNotes } = req.body;
+  const { title, basePalette, darkMode, pingInterval, viewMode, showClock, showWeather, showFilters, clockAccent, weatherAccent, sharpCorners, gap, showCardTags, sidebarMode, customCss, weather, background, widgetOrder, colSpan, hiddenNotes, hiddenGroups } = req.body;
   if (title        !== undefined) cfg.title        = String(title).trim().slice(0, 100);
   if (basePalette  !== undefined) cfg.basePalette  = String(basePalette);
   if (darkMode     !== undefined) cfg.darkMode     = Boolean(darkMode);
@@ -310,9 +343,13 @@ app.put('/api/config', (req, res) => {
   if (viewMode     !== undefined) cfg.viewMode     = ['grid', 'list'].includes(viewMode) ? viewMode : 'grid';
   if (showClock    !== undefined) cfg.showClock    = Boolean(showClock);
   if (showWeather  !== undefined) cfg.showWeather  = Boolean(showWeather);
+  if (showFilters  !== undefined) cfg.showFilters  = Boolean(showFilters);
   if (clockAccent   !== undefined) cfg.clockAccent   = String(clockAccent).trim().slice(0, 20);
   if (weatherAccent !== undefined) cfg.weatherAccent = String(weatherAccent).trim().slice(0, 20);
   if (sharpCorners !== undefined) cfg.sharpCorners = Boolean(sharpCorners);
+  if (gap          !== undefined) cfg.gap          = Math.min(64, Math.max(0, Math.round(Number(gap) || 0)));
+  if (showCardTags !== undefined) cfg.showCardTags = Boolean(showCardTags);
+  if (sidebarMode  !== undefined) cfg.sidebarMode  = ['overlay', 'docked'].includes(sidebarMode) ? sidebarMode : 'overlay';
   if (customCss    !== undefined) cfg.customCss    = String(customCss).slice(0, 50000);
   if (weather !== undefined && weather !== null && typeof weather === 'object') {
     cfg.weather = {
@@ -331,6 +368,7 @@ app.put('/api/config', (req, res) => {
   if (Array.isArray(widgetOrder)) cfg.widgetOrder = widgetOrder;
   if (colSpan && typeof colSpan === 'object' && !Array.isArray(colSpan)) cfg.colSpan = colSpan;
   if (Array.isArray(hiddenNotes)) cfg.hiddenNotes = hiddenNotes.filter(id => typeof id === 'string');
+  if (Array.isArray(hiddenGroups)) cfg.hiddenGroups = hiddenGroups.filter(id => typeof id === 'string');
   saveConfig(cfg);
   res.json(cfg);
 });
@@ -357,6 +395,7 @@ app.post('/api/config/import', (req, res) => {
     viewMode:     typeof body.viewMode     === 'string'  ? body.viewMode     : current.viewMode,
     showClock:    typeof body.showClock    === 'boolean' ? body.showClock    : current.showClock,
     showWeather:  typeof body.showWeather  === 'boolean' ? body.showWeather  : current.showWeather,
+    showFilters:  typeof body.showFilters  === 'boolean' ? body.showFilters  : current.showFilters,
     weather: (body.weather && typeof body.weather === 'object') ? {
       apiKey: String(body.weather.apiKey || '').trim().slice(0, 300),
       city:   String(body.weather.city   || '').trim().slice(0, 100),
@@ -364,6 +403,9 @@ app.post('/api/config/import', (req, res) => {
     } : current.weather,
     background: (body.background && typeof body.background === 'object') ? body.background : current.background,
     sharpCorners: typeof body.sharpCorners === 'boolean' ? body.sharpCorners : current.sharpCorners,
+    gap:          typeof body.gap          === 'number'  ? Math.min(64, Math.max(0, Math.round(body.gap))) : current.gap,
+    showCardTags: typeof body.showCardTags === 'boolean' ? body.showCardTags : current.showCardTags,
+    sidebarMode:  ['overlay', 'docked'].includes(body.sidebarMode) ? body.sidebarMode : current.sidebarMode,
     customCss:   typeof body.customCss   === 'string'  ? body.customCss.slice(0, 50000) : current.customCss,
     notes:      Array.isArray(body.notes)      ? body.notes      : current.notes,
     feeds:      Array.isArray(body.feeds)      ? body.feeds      : current.feeds,
@@ -411,8 +453,15 @@ app.get('/api/icon/:slug', async (req, res) => {
 
 // ─── Favicon ──────────────────────────────────────────────────────────────────
 
+const DEFAULT_FAVICON = path.join(__dirname, 'public', 'default-favicon.png');
+
 app.get(['/favicon.ico', '/api/favicon'], (req, res) => {
-  if (!fs.existsSync(FAVICON_FILE)) return res.status(404).send('');
+  // No custom favicon uploaded → serve the bundled default instead of 404.
+  if (!fs.existsSync(FAVICON_FILE)) {
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Cache-Control', 'no-cache');
+    return res.sendFile(DEFAULT_FAVICON);
+  }
   let mime = 'image/x-icon';
   try { mime = fs.readFileSync(FAVICON_MIME, 'utf8').trim(); } catch {}
   res.setHeader('Content-Type', mime);
@@ -503,6 +552,8 @@ app.post('/api/groups/:id/links', (req, res) => {
     id: randomUUID(),
     name: String(name).trim().slice(0, 80),
     url: String(url).trim().slice(0, 2000),
+    // Up to 5 failover URLs tried in order when the primary is unreachable.
+    altUrls: sanitizeAltUrls(req.body.altUrls),
     // Optional; used instead of `url` on small screens when SPLIT_LINKS is on.
     mobileUrl: String(req.body.mobileUrl || '').trim().slice(0, 2000),
     icon: String(icon || '').trim().slice(0, 80).replace(/[^a-z0-9-]/g, ''),
@@ -543,6 +594,7 @@ app.put('/api/groups/:gid/links/:lid', (req, res) => {
   const { name, url, icon, description } = req.body;
   if (name        !== undefined) link.name        = String(name).trim().slice(0, 80);
   if (url         !== undefined) link.url         = String(url).trim().slice(0, 2000);
+  if (req.body.altUrls   !== undefined) link.altUrls   = sanitizeAltUrls(req.body.altUrls);
   if (req.body.mobileUrl !== undefined) link.mobileUrl = String(req.body.mobileUrl).trim().slice(0, 2000);
   if (icon        !== undefined) link.icon        = String(icon).trim().slice(0, 80).replace(/[^a-z0-9-]/g, '');
   if (req.body.iconBg     !== undefined) link.iconBg     = String(req.body.iconBg).trim().slice(0, 30);
