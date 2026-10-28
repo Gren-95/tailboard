@@ -2,3 +2,4 @@ node_modules/
 src/public/style.css
 .localdata/
 src/public/bootstrap-icons.svg
+.serena/
